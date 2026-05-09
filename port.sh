@@ -471,7 +471,7 @@ fi
 if [[ -n "$portparts" ]]; then
     read -ra mix_port_part <<< "$portparts"
 else
-    mix_port_part=("my_stock" "my_region" "my_manifest" "my_product")
+    mix_port_part=("my_stock" "my_region" "my_manifest" "my_product" "my_heytap" "my_carrier" "my_bigball")
 fi
 if [[ "$mix_port" == true ]];then
     blue "Mixed Port Mode"
@@ -5310,16 +5310,16 @@ while IFS= read -r -d '' zip; do
         
         unzip -q "$zip" -d "$temp_ak_dir" > /dev/null 2>&1
         
-        # Search for kernel image (Image or Image.gz)
-        kernel_file=$(find "$temp_ak_dir" -name "Image" -print -quit)
-        if [[ -z "$kernel_file" ]]; then 
-             kernel_file=$(find "$temp_ak_dir" -name "Image.gz" -print -quit)
-        fi
+        # Search for a usable kernel image. Different AnyKernel zips ship
+        # different names, so accept the common variants instead of only Image.
+        kernel_file=$(find "$temp_ak_dir" -type f \
+            \( -name "Image" -o -name "Image.gz" -o -name "Image.gz-dtb" -o -name "Image.lz4" -o -name "Image.lz4-dtb" -o -name "zImage" -o -name "kernel" \) \
+            -print -quit)
         
         # Convert file paths to absolute
         [[ -n "$kernel_file" ]] && kernel_file=$(readlink -f "$kernel_file")
 
-        dtb_file=$(find "$temp_ak_dir" -name "dtb" -print -quit)
+        dtb_file=$(find "$temp_ak_dir" -type f \( -name "dtb" -o -name "*.dtb" -o -name "dtb.img" \) -print -quit)
         [[ -n "$dtb_file" ]] && dtb_file=$(readlink -f "$dtb_file")
 
         dtbo_img=$(find "$temp_ak_dir" -name "dtbo.img" -print -quit)
@@ -5356,7 +5356,7 @@ while IFS= read -r -d '' zip; do
         # Delete temp directory
         rm -rf "$temp_ak_dir"
     fi
-done < <(find "devices/${base_product_device}/" -name "*.zip" -print0)
+done < <(find "devices/${base_product_device}/" "devices/common" -type f -name "*.zip" -print0)
 
 
 # KernelSU init_boot Patch (ksud)
@@ -5597,18 +5597,26 @@ if [[ "$pack_method" == "stock" ]];then
 
     if [[ -d "devices/${base_product_device}" ]];then
 
-        ksu_bootimg_file=$(find "devices/${base_product_device}/" -type f \( -name "*boot_ksu.img" -o -name "*boot_custom.img" -o -name "*boot_noksu.img" \) | head -n 1)
-        dtbo_file=$(find "devices/${base_product_device}/" -type f \( -name "*dtbo_ksu.img" -o -name "*dtbo_custom.img" -o -name "*dtbo_noksu.img" \) | head -n 1)
+        nonksu_bootimg_file=$(find "devices/${base_product_device}/" -type f -name "*boot_noksu.img" | head -n 1)
+        ksu_bootimg_file=$(find "devices/${base_product_device}/" -type f -name "*boot_ksu.img" | head -n 1)
+        custom_bootimg_file=$(find "devices/${base_product_device}/" -type f -name "*boot_custom.img" | head -n 1)
+
+        nonksu_dtbo_file=$(find "devices/${base_product_device}/" -type f -name "*dtbo_noksu.img" | head -n 1)
+        ksu_dtbo_file=$(find "devices/${base_product_device}/" -type f -name "*dtbo_ksu.img" | head -n 1)
+        custom_dtbo_file=$(find "devices/${base_product_device}/" -type f -name "*dtbo_custom.img" | head -n 1)
         vendor_boot_file=$(find "devices/${base_product_device}/" -type f -name "vendor_boot.img" | head -n 1)
 
-        if [ -n "$ksu_bootimg_file" ];then
+        if [ -n "$nonksu_bootimg_file" ];then
+            mv -fv "$nonksu_bootimg_file" "out/target/product/${base_product_device}/IMAGES/boot.img"
+            [ -n "$nonksu_dtbo_file" ] && mv -fv "$nonksu_dtbo_file" "out/target/product/${base_product_device}/IMAGES/dtbo.img"
+        elif [ -n "$ksu_bootimg_file" ];then
             mv -fv "$ksu_bootimg_file" "out/target/product/${base_product_device}/IMAGES/boot.img"
+            [ -n "$ksu_dtbo_file" ] && mv -fv "$ksu_dtbo_file" "out/target/product/${base_product_device}/IMAGES/dtbo.img"
+        elif [ -n "$custom_bootimg_file" ];then
+            mv -fv "$custom_bootimg_file" "out/target/product/${base_product_device}/IMAGES/boot.img"
+            [ -n "$custom_dtbo_file" ] && mv -fv "$custom_dtbo_file" "out/target/product/${base_product_device}/IMAGES/dtbo.img"
         else
             spoof_bootimg "out/target/product/${base_product_device}/IMAGES/boot.img"
-        fi
-
-        if [ -n "$dtbo_file" ];then
-            mv -fv "$dtbo_file" "out/target/product/${base_product_device}/IMAGES/dtbo.img"
         fi
 
         if [ -n "$vendor_boot_file" ];then
