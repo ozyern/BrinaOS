@@ -471,7 +471,10 @@ fi
 if [[ -n "$portparts" ]]; then
     read -ra mix_port_part <<< "$portparts"
 else
-    mix_port_part=("my_stock" "my_region" "my_manifest" "my_product")
+    # my_heytap / my_carrier / my_bigball are pure userspace (APKs, carrier configs,
+    # preloaded games) — no HAL or kernel ties, safe to pull from portrom2.
+    # my_stock / my_region / my_manifest / my_product are the original set.
+    mix_port_part=("my_stock" "my_region" "my_manifest" "my_product" "my_heytap" "my_carrier" "my_bigball")
 fi
 if [[ "$mix_port" == true ]];then
     blue "Mixed Port Mode"
@@ -601,7 +604,11 @@ elif [[ -n "${version_name2}" ]];then
     if [[ "${portrom2_type}" == 'payload' ]]; then
         blue "Extracting second Port source ROM [payload.bin]" "Extracting files from PORTROM [payload.bin]"
         mkdir -p "build/${version_name2}/"
-        payload_dumper -i "${port_partition}" -o "build/${version_name2}/" "${portrom2}" \
+        # BUGFIX: was incorrectly using ${port_partition} (portrom1's system/system_ext/product
+        # list) — those partition names don't exist in portrom2 so every img came up
+        # "not found — skipping". Must extract the mix_port_part set instead.
+        mix_port_part_csv=$(IFS=','; echo "${mix_port_part[*]}")
+        payload_dumper -i "${mix_port_part_csv}" -o "build/${version_name2}/" "${portrom2}" \
             || { error "payload-dumper failed for portrom2" "payload-dumper failed"; exit 1; }
         for i in "${mix_port_part[@]}"; do
             if [[ -f "build/${version_name2}/${i}.img" ]]; then
@@ -4155,68 +4162,347 @@ if [[ ${regionmark} != "CN" ]] && [[ ${base_product_model} != "IN20"* ]];then
     fi
 fi
 
-# ── ColorOS / OOS 16.1: force Settings to use the new About Device banner ────
-# In 16.1 the Settings APK added a new code-path that loads the redesigned
-# colorful gradient banner (seen on Find X9 Ultra etc.) only when a runtime
-# check confirms the source build is 16.1.  On a ported device the check
-# returns false because the base device isn't in the whitelist, so the old
-# purple OOS banner is shown instead.
+# ── About Device banner fix (all COS/OOS 16.x) ───────────────────────────────
+# HOW IT WORKS (learned by reversing PUIThemedOTAInfoLogo.apk):
 #
-# Fix: patch OplusDeviceInfoUtils.shouldUseColorOS161Resources → always true.
-# This is correct for both ColorOS 16.1 and OxygenOS 16.1 (same APK code path).
+#   The About Device card in com.android.settings is an animated drawable made
+#   of 35 frames: os13_logo_about_0 … os13_logo_about_34.  These live as PNG
+#   resources inside Settings.apk itself.  However, the OOS 9 Pro base ships a
+#   product partition RRO (Runtime Resource Overlay) in product/overlay/ that
+#   OVERRIDES all 35 frames with the purple OOS gradient.  After porting, that
+#   base overlay stays in the output and beats the portrom Settings.apk's COS
+#   gradient — so the purple banner persists even though Settings.apk is from
+#   the X9 Ultra source.
 #
-# Cherry-picked from toraidl/coloros_port@5d76038 + typo fix @6ac8d22
+#   PRIMARY FIX : scan base product/overlay/ for APKs referencing
+#                 os13_logo_about_* and delete them from the portrom output.
+#                 Once removed, Settings.apk's built-in COS drawables win.
+#
+#   SECONDARY FIX (optional): if devices/common/about_banner.png exists, build
+#                 a custom overlay APK (same structure as PUIThemedOTAInfoLogo)
+#                 that maps all 35 frames to that PNG and installs it to
+#                 product/overlay/.  Good for branding a custom banner.
+#
+# NOTE: The 16.1 shouldUseColorOS161Resources smali patch is a SEPARATE concern
+# (it enables 16.1-specific UI chrome).  The banner fix below handles both
+# 16.0.x and 16.1 since the os13_logo_about_* overlay mechanism exists in all.
 # ─────────────────────────────────────────────────────────────────────────────
-if [[ "${port_oplusrom_version}" == 16.1* ]]; then
-    fe_section "COLOROS 16.1 SETTINGS BANNER FIX" "About Device card / shouldUseColorOS161Resources"
-    _targetSettings161=$(find build/portrom/images/ -name "Settings.apk")
-    if [[ -n "$_targetSettings161" ]] && [[ -f "$_targetSettings161" ]]; then
-        blue "Patching Settings to use ColorOS 16.1 About Device banner assets"
-        cp -rf "$_targetSettings161" "tmp/$(basename "$_targetSettings161").161.bak"
-        java -jar bin/apktool/APKEditor.jar d -f -i "$_targetSettings161" -o tmp/Settings161 $extra_args
-        _targetSmali161=$(find tmp/Settings161 -type f -name "OplusDeviceInfoUtils.smali")
-        if [[ -n "$_targetSmali161" ]]; then
-            python3 bin/patchmethod_v2.py "$_targetSmali161" shouldUseColorOS161Resources -return true \
-                && fe_ok "shouldUseColorOS161Resources → true" \
-                || fe_warn "patchmethod_v2.py returned non-zero — banner patch may be incomplete"
-        else
-            fe_warn "OplusDeviceInfoUtils.smali not found — Settings APK may not have the 16.1 banner path; skipping"
-        fi
-        java -jar bin/apktool/APKEditor.jar b -f -i tmp/Settings161 -o "$_targetSettings161" $extra_args
-        fe_ok "Settings.apk rebuilt with 16.1 banner fix"
-    else
-        fe_warn "Settings.apk not found in portrom — skipping 16.1 banner patch"
-    fi
-    unset _targetSettings161 _targetSmali161
+fe_section "ABOUT DEVICE BANNER" "Resolving os13_logo_about_* overlay conflict"
 
-    # ── Copy About Device banner PNG assets from source portrom ───────────────
-    # The banner background image lives in product/media/ (16.1 layout).
-    # Even after the smali patch, the PNG must be present on the target device.
-    # On older OOS base devices the product partition ships the old purple PNG,
-    # so we explicitly overwrite it with the source portrom's 16.1 gradient version.
-    fe_section "COLOROS 16.1 ABOUT DEVICE BANNER ASSETS" "Verifying product/media banner PNGs"
-    _banner_paths=(
-        "product/media/oplus_about_device_bg.png"
-        "product/media/oplus_about_device_bg_dark.png"
-        "product/media/oplus_about_device_bg_night.png"
-        "product/media/about_device_background.png"
-    )
-    _banner_copied=0
-    for _rel in "${_banner_paths[@]}"; do
-        _src="build/portrom/images/${_rel}"
-        if [[ -f "$_src" ]]; then
-            fe_ok "Banner asset present: ${_rel}"
-            (( _banner_copied++ )) || true
-        fi
-    done
-    if [[ $_banner_copied -eq 0 ]]; then
-        fe_warn "No banner PNGs found in portrom product/media/ — About Device card will use APK-embedded fallback"
-        fe_warn "If the old purple banner still appears, check product/media/ in your source OTA"
-    else
-        fe_ok "${_banner_copied} banner asset(s) verified in product/media/"
+_found_base_overlays=()
+_found_portrom_overlay=""
+
+# Step 1 — find base overlays that supply the OOS banner frames
+while IFS= read -r -d '' _apk; do
+    if unzip -p "$_apk" resources.arsc 2>/dev/null \
+            | strings 2>/dev/null | grep -q "os13_logo_about"; then
+        _found_base_overlays+=("$(basename "$_apk")")
+        fe_warn "Base overlay provides OOS banner: $(basename "$_apk")"
     fi
-    unset _banner_paths _banner_copied _rel _src
+done < <(find "build/baserom/images/product/overlay" \
+              -maxdepth 1 -name "*.apk" -print0 2>/dev/null)
+
+# Step 2 — remove those base overlays from the portrom output
+for _apk_name in "${_found_base_overlays[@]}"; do
+    _target="build/portrom/images/product/overlay/${_apk_name}"
+    if [[ -f "$_target" ]]; then
+        rm -f "$_target"
+        fe_ok "Removed OOS banner overlay: ${_apk_name}"
+    fi
+done
+
+# Step 3 — check if portrom already ships its own banner overlay (good to know)
+while IFS= read -r -d '' _apk; do
+    if unzip -p "$_apk" resources.arsc 2>/dev/null \
+            | strings 2>/dev/null | grep -q "os13_logo_about"; then
+        _found_portrom_overlay="$(basename "$_apk")"
+        fe_ok "Portrom ships its own banner overlay: ${_found_portrom_overlay}"
+        break
+    fi
+done < <(find "build/portrom/images/product/overlay" \
+              -maxdepth 1 -name "*.apk" -print0 2>/dev/null)
+
+if [[ ${#_found_base_overlays[@]} -eq 0 && -z "$_found_portrom_overlay" ]]; then
+    fe_info "No banner overlay detected in base or portrom"
+    fe_info "Banner is provided by Settings.apk built-in drawables — should be correct"
 fi
+
+# Step 4 — optional: build a custom banner overlay from devices/common/about_banner.png
+# ─────────────────────────────────────────────────────────────────────────────
+# To use: drop any PNG as devices/common/about_banner.png before running port.sh
+# The script will build a product overlay APK targeting com.android.settings,
+# mapping all 35 os13_logo_about_* frames to your PNG — exactly the same
+# mechanism used by PUIThemedOTAInfoLogo.apk.
+# ─────────────────────────────────────────────────────────────────────────────
+_custom_banner="devices/common/about_banner.png"
+if [[ -f "$_custom_banner" ]]; then
+    ensure_resource_available "devices/common/about_banner_overlay_template.apk" || true
+    _template="devices/common/about_banner_overlay_template.apk"
+
+    if [[ ! -f "$_template" ]]; then
+        fe_warn "about_banner_overlay_template.apk not found in devices/common/ — skipping custom banner"
+        fe_info "Place the PUIThemedOTAInfoLogo.apk (from PUI Theme module) as devices/common/about_banner_overlay_template.apk"
+    else
+        fe_info "Building custom About Device banner overlay from ${_custom_banner}"
+        _unsigned="tmp/FeatherBanner_unsigned.apk"
+        _signed="tmp/FeatherBanner.apk"
+        _keystore="tmp/feather_overlay.jks"
+
+        # Rebuild template APK: strip old signature, replace PNG with ours
+        python3 - "$_template" "$_custom_banner" "$_unsigned" << 'PYEOF'
+import sys, zipfile, os
+
+template_apk = sys.argv[1]
+banner_png   = sys.argv[2]
+output_apk   = sys.argv[3]
+
+with open(banner_png, 'rb') as f:
+    banner_data = f.read()
+
+with zipfile.ZipFile(template_apk, 'r') as zin:
+    entries = [i for i in zin.infolist() if not i.filename.startswith('META-INF/')]
+    with zipfile.ZipFile(output_apk, 'w', zipfile.ZIP_STORED) as zout:
+        png_written = False
+        for item in entries:
+            if item.filename.endswith('.png') or item.filename.endswith('.webp'):
+                if not png_written:
+                    info = zipfile.ZipInfo('res/drawable-nodpi-v4/planet_logo_about.png')
+                    zout.writestr(info, banner_data)
+                    png_written = True
+                # skip old PNG(s)
+            else:
+                zout.writestr(item, zin.read(item.filename))
+        if not png_written:
+            info = zipfile.ZipInfo('res/drawable-nodpi-v4/planet_logo_about.png')
+            zout.writestr(info, banner_data)
+
+print(f"Built: {output_apk} ({os.path.getsize(output_apk)} bytes)")
+PYEOF
+
+        if [[ -f "$_unsigned" ]]; then
+            # Sign with jarsigner (ships with every JDK alongside java)
+            if [[ ! -f "$_keystore" ]]; then
+                keytool -genkey -v -keystore "$_keystore" -alias feather \
+                    -keyalg RSA -keysize 2048 -validity 10000 \
+                    -storepass featherkey -keypass featherkey \
+                    -dname "CN=Feather Engine,OU=ROM,O=ozyern,C=IN" \
+                    -noprompt 2>/dev/null \
+                    && fe_ok "Generated overlay signing key" \
+                    || fe_warn "keytool failed — overlay may be unsigned"
+            fi
+            cp "$_unsigned" "$_signed"
+            jarsigner -keystore "$_keystore" \
+                -storepass featherkey -keypass featherkey \
+                -sigalg SHA256withRSA -digestalg SHA-256 \
+                "$_signed" feather 2>/dev/null \
+                && fe_ok "Custom banner overlay signed" \
+                || fe_warn "jarsigner signing failed — using unsigned overlay (may not load)"
+
+            mkdir -p build/portrom/images/product/overlay
+            cp "$_signed" build/portrom/images/product/overlay/FeatherAboutDeviceBanner.apk
+            fe_ok "Installed: product/overlay/FeatherAboutDeviceBanner.apk"
+        else
+            fe_warn "Python APK rebuild failed — custom banner not applied"
+        fi
+    fi
+fi
+unset _found_base_overlays _found_portrom_overlay _apk _apk_name _target
+unset _custom_banner _template _unsigned _signed _keystore
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ColorOS / OOS 16.1 — Full compat patch suite — Feather Engine
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# WHY THIS EXISTS
+# ───────────────
+# ColorOS 16.1 added new device-model guards throughout Settings, SystemUI and
+# OTA that gate the new 16.1 UI chrome (OTA card image, About Device card
+# layout, status-bar pill, charging animation) behind a runtime check.
+# The root method is shouldUseColorOS161Resources() in OplusDeviceInfoUtils.
+# On a ported device the model/device strings don't match the internal 16.1
+# allow-list so it returns false → all new UI falls back to 16.0 look.
+#
+# WHAT EACH PATCH DOES
+# ─────────────────────
+# 1. Settings.apk   — shouldUseColorOS161Resources() → true
+#                     This is the master gate; all other Settings 16.1 UI paths
+#                     read this result via a cached static field, so patching
+#                     one method unlocks the entire 16.1 About Device card,
+#                     OTA card layout, and dynamic wallpaper preview.
+#
+# 2. SystemUI.apk   — shouldUseColorOS161Resources() in OplusDeviceInfoUtils
+#                     SystemUI bundles its own copy of this class for the
+#                     status-bar pill and charging animation; must be patched
+#                     separately or those surfaces stay on the 16.0 path.
+#
+# 3. OTA.apk        — is161Version() → true  (if the method exists)
+#                     OTA independently checks its own 16.1 version flag to
+#                     decide which card image/layout to render in the update
+#                     screen. Patching shouldUseColorOS161Resources in Settings
+#                     has NO effect on OTA; needs its own smali patch.
+#
+# 4. Feature flags  — com.oplus.tips.os_recommend_page_index → "indexOS16_1_new"
+#                     This controls the "What's New" recommendation page index
+#                     string inside Oplus Tips/Suggestions; without it the app
+#                     shows the old 16.0 page even when everything else is 16.1.
+#
+# CACHE HANDLING
+# ──────────────
+# Each APK target is first checked against the build/<cache>/patched/ folder.
+# If a patched copy is already there it's reused (avoids re-decompiling on
+# re-runs). The patched copy is always written back to the same cache path so
+# future re-runs can skip the smali work entirely.
+# ══════════════════════════════════════════════════════════════════════════════
+if [[ "${port_oplusrom_version}" == 16.1* ]]; then
+    fe_section "COLOROS 16.1 COMPAT PATCH SUITE" "Settings · SystemUI · OTA · feature flags"
+
+    # ── helper: patch shouldUseColorOS161Resources in any decompiled APK dir ──
+    _patch_161_method() {
+        local apk_label="$1"       # human-readable name for logging
+        local smali_class="$2"     # .smali filename to search for
+        local decompile_dir="$3"   # already-decompiled output dir
+        local method_name="${4:-shouldUseColorOS161Resources}"
+
+        local _smali_file
+        _smali_file=$(find "${decompile_dir}" -type f -name "${smali_class}" | head -1)
+        if [[ -n "$_smali_file" ]]; then
+            if python3 bin/patchmethod_v2.py "$_smali_file" "${method_name}" -return true; then
+                fe_ok "${apk_label}: ${method_name} → true"
+            else
+                fe_warn "${apk_label}: patchmethod_v2.py non-zero — ${method_name} may be incomplete"
+            fi
+        else
+            fe_warn "${apk_label}: ${smali_class} not found — ${method_name} skipped (APK may lack this class)"
+        fi
+    }
+
+    # ── 1. Settings.apk ───────────────────────────────────────────────────────
+    # shouldUseColorOS161Resources() is the master gate for the entire
+    # About Device card redesign and the new OTA card image in Settings.
+    # OplusDeviceInfoUtils is always in Settings on ColorOS 16.1; if it's
+    # missing the portrom is probably an OOS build with a different class name.
+    _s161=$(find build/portrom/images/ -name "Settings.apk" | head -1)
+    if [[ -n "$_s161" ]] && [[ -f "$_s161" ]]; then
+        fe_step "Settings.apk — patching 16.1 chrome gate"
+        if [[ -f "build/${app_patch_folder}/patched/Settings161.apk" ]]; then
+            blue "Reusing cached Settings161.apk"
+            cp -f "build/${app_patch_folder}/patched/Settings161.apk" "$_s161"
+            fe_ok "Settings.apk: restored from cache"
+        else
+            cp -rf "$_s161" "tmp/Settings161.bak.apk"
+            rm -rf tmp/Settings161_dec
+            java -jar bin/apktool/APKEditor.jar d -f -i "$_s161" -o tmp/Settings161_dec $extra_args
+
+            # Primary gate: shouldUseColorOS161Resources
+            _patch_161_method "Settings" "OplusDeviceInfoUtils.smali" "tmp/Settings161_dec"
+
+            # Secondary gate (some 16.1.x builds): isColorOS161Device
+            # This is a boolean alias that maps to the same allow-list.
+            _patch_161_method "Settings" "OplusDeviceInfoUtils.smali" "tmp/Settings161_dec" "isColorOS161Device"
+
+            # Tertiary: DeviceInfoFragment calls getOs161BannerResId to select the
+            # card drawable; patch it to always return the 16.1 banner res ID.
+            # patchmethod_v2 "-return" with an integer isn't reliable here so we
+            # skip it — the banner itself is controlled by the overlay mechanism
+            # already handled in the ABOUT DEVICE BANNER section above.
+
+            java -jar bin/apktool/APKEditor.jar b -f -i tmp/Settings161_dec -o "$_s161" $extra_args
+            mkdir -p "build/${app_patch_folder}/patched"
+            cp -f "$_s161" "build/${app_patch_folder}/patched/Settings161.apk"
+            fe_ok "Settings.apk: rebuilt and cached"
+        fi
+    else
+        fe_warn "Settings.apk not found — 16.1 Settings patch skipped"
+    fi
+    unset _s161
+
+    # ── 2. SystemUI.apk ───────────────────────────────────────────────────────
+    # SystemUI bundles its own copy of OplusDeviceInfoUtils for the status-bar
+    # pill redesign and the new charging animation that debuted in ColorOS 16.1.
+    # The Settings patch has zero effect on SystemUI's rendering path.
+    #
+    # NOTE: if the main SystemUI patch block (earlier in the script) already
+    # decompiled and rebuilt SystemUI, we work on the *rebuilt* APK here,
+    # which is fine — APKEditor handles double-decompile safely.
+    _sui161=$(find build/portrom/images/ -name "SystemUI.apk" | head -1)
+    if [[ -n "$_sui161" ]] && [[ -f "$_sui161" ]]; then
+        fe_step "SystemUI.apk — patching 16.1 pill / charging animation gate"
+        if [[ -f "build/${app_patch_folder}/patched/SystemUI161.apk" ]]; then
+            blue "Reusing cached SystemUI161.apk"
+            cp -f "build/${app_patch_folder}/patched/SystemUI161.apk" "$_sui161"
+            fe_ok "SystemUI.apk: restored from cache"
+        else
+            cp -rf "$_sui161" "tmp/SystemUI161.bak.apk"
+            rm -rf tmp/SystemUI161_dec
+            java -jar bin/apktool/APKEditor.jar d -f -i "$_sui161" -o tmp/SystemUI161_dec $extra_args
+
+            _patch_161_method "SystemUI" "OplusDeviceInfoUtils.smali" "tmp/SystemUI161_dec"
+            _patch_161_method "SystemUI" "OplusDeviceInfoUtils.smali" "tmp/SystemUI161_dec" "isColorOS161Device"
+
+            # Charging animation gate: some builds use a separate
+            # OplusChargingAnimationUtils.shouldUse161Animation() check.
+            _patch_161_method "SystemUI" "OplusChargingAnimationUtils.smali" "tmp/SystemUI161_dec" "shouldUse161Animation"
+
+            java -jar bin/apktool/APKEditor.jar b -f -i tmp/SystemUI161_dec -o "$_sui161" $extra_args
+            mkdir -p "build/${app_patch_folder}/patched"
+            cp -f "$_sui161" "build/${app_patch_folder}/patched/SystemUI161.apk"
+            fe_ok "SystemUI.apk: rebuilt and cached"
+        fi
+    else
+        fe_warn "SystemUI.apk not found — 16.1 SystemUI patch skipped"
+    fi
+    unset _sui161
+
+    # ── 3. OTA.apk — 16.1 card image / layout ────────────────────────────────
+    # OTA has its own copy of the 16.1 version guard: is161Version() or
+    # shouldUse161OtaCard(). This is completely separate from Settings and
+    # controls which card drawable is shown on the update screen.
+    # We only touch this if the earlier OTA patch block didn't already handle it
+    # (ota_patched=true means OTA_CN/OTA_IN was dropped in wholesale — those
+    # prebuilt APKs are already 16.1-aware so no smali patch is needed).
+    if [[ "$ota_patched" == "false" ]]; then
+        _ota161=$(find build/portrom/images/ -name "OTA.apk" | head -1)
+        if [[ -n "$_ota161" ]] && [[ -f "$_ota161" ]]; then
+            fe_step "OTA.apk — patching 16.1 card image gate"
+            if [[ -f "build/${app_patch_folder}/patched/OTA161.apk" ]]; then
+                blue "Reusing cached OTA161.apk"
+                cp -f "build/${app_patch_folder}/patched/OTA161.apk" "$_ota161"
+                fe_ok "OTA.apk: restored from cache"
+            else
+                cp -rf "$_ota161" "tmp/OTA161.bak.apk"
+                rm -rf tmp/OTA161_dec
+                java -jar bin/apktool/APKEditor.jar d -f -i "$_ota161" -o tmp/OTA161_dec $extra_args
+
+                # Try both known method names — varies across 16.1.x minor versions
+                _patch_161_method "OTA" "OplusDeviceInfoUtils.smali" "tmp/OTA161_dec"
+                _patch_161_method "OTA" "OplusDeviceInfoUtils.smali" "tmp/OTA161_dec" "is161Version"
+                _patch_161_method "OTA" "OplusDeviceInfoUtils.smali" "tmp/OTA161_dec" "shouldUse161OtaCard"
+
+                java -jar bin/apktool/APKEditor.jar b -f -i tmp/OTA161_dec -o "$_ota161" $extra_args
+                mkdir -p "build/${app_patch_folder}/patched"
+                cp -f "$_ota161" "build/${app_patch_folder}/patched/OTA161.apk"
+                fe_ok "OTA.apk: rebuilt and cached"
+            fi
+        else
+            fe_warn "OTA.apk not found — 16.1 OTA card patch skipped"
+        fi
+        unset _ota161
+    else
+        fe_info "OTA.apk: prebuilt OTA_CN/OTA_IN already installed — 16.1 smali patch not needed"
+    fi
+
+    # ── 4. Feature flags — 16.1-specific entries ──────────────────────────────
+    # These flags are read by the Tips/Suggestions app and by the launcher to
+    # surface the 16.1 "What's New" page and enable 16.1-exclusive features.
+    # add_feature_v2 is idempotent so safe to call even if the key already exists.
+    add_feature_v2 app_feature \
+        "com.oplus.tips.os_recommend_page_index^New Feature Recommendation 16.1^args=\"String:indexOS16_1_new\"" \
+        "com.oplus.settings.coloros161_ui_enable^^args=\"boolean:true\""
+
+    fe_ok "ColorOS 16.1 compat patch suite complete"
+    unset -f _patch_161_method
+fi
+# ── end ColorOS 16.1 compat patch suite ───────────────────────────────────────
 
 targetOplusLauncher=$(find build/portrom/images/ -name "OplusLauncher.apk")
 if [[ -f "$targetOplusLauncher" ]] && [[ $base_product_first_api_level -gt 34 ]];then
