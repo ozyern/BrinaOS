@@ -593,6 +593,7 @@ else
 fi
 if [[ -n "${version_name2}" ]] && [[ -d "build/${version_name2}" ]];then
     blue "Second Port source ROM cache detected: build/${version_name2} (reusing)" "cached ${version_name2} folder detected, copying"
+    # Copy mix_port_part imgs as before
     for i in "${mix_port_part[@]}"; do
         if [[ -f "build/${version_name2}/${i}.img" ]]; then
             cp -fv "build/${version_name2}/${i}.img" build/portrom/images/
@@ -600,16 +601,30 @@ if [[ -n "${version_name2}" ]] && [[ -d "build/${version_name2}" ]];then
             yellow "Cache: ${i}.img not in cache folder — skipping"
         fi
     done
+    # Also stage system_ext and product from cache if present.
+    # The overwrite block below handles the actual copy-over-portrom1 logic,
+    # but it needs the imgs to be in build/${version_name2}/ which they
+    # already are if the cache was populated by a previous full extraction.
+    # Nothing to do here — the overwrite block reads directly from the cache dir.
 elif [[ -n "${version_name2}" ]];then
     if [[ "${portrom2_type}" == 'payload' ]]; then
         blue "Extracting second Port source ROM [payload.bin]" "Extracting files from PORTROM [payload.bin]"
         mkdir -p "build/${version_name2}/"
-        # BUGFIX: was incorrectly using ${port_partition} (portrom1's system/system_ext/product
-        # list) — those partition names don't exist in portrom2 so every img came up
-        # "not found — skipping". Must extract the mix_port_part set instead.
-        mix_port_part_csv=$(IFS=','; echo "${mix_port_part[*]}")
-        payload_dumper -i "${mix_port_part_csv}" -o "build/${version_name2}/" "${portrom2}" \
+        # Build the full extraction list:
+        #   mix_port_part  — the oplus partitions (my_stock, my_product etc)
+        #   system_ext     — 16.1 privileged apps, Now Bar service, lock screen
+        #   product        — 16.1 RROs, overlays, GMS packages
+        # system is deliberately excluded: all smali patches target portrom1's
+        # system and replacing it with portrom2's would break the patch pipeline.
+        _p2_extract_parts=("${mix_port_part[@]}" "system_ext" "product")
+        _p2_extract_csv=$(IFS=','; echo "${_p2_extract_parts[*]}")
+        blue "portrom2 partitions to extract: ${_p2_extract_csv}"
+        payload_dumper -i "${_p2_extract_csv}" -o "build/${version_name2}/" "${portrom2}" \
             || { error "payload-dumper failed for portrom2" "payload-dumper failed"; exit 1; }
+        unset _p2_extract_parts _p2_extract_csv
+        # Copy mix_port_part imgs into portrom workspace immediately.
+        # system_ext and product are handled separately below (after portrom1's
+        # versions are already in place) so they cleanly overwrite them.
         for i in "${mix_port_part[@]}"; do
             if [[ -f "build/${version_name2}/${i}.img" ]]; then
                 cp -fv "build/${version_name2}/${i}.img" build/portrom/images/
@@ -619,21 +634,69 @@ elif [[ -n "${version_name2}" ]];then
         done
     elif [[ "${portrom2_type}" == 'img' ]]; then
         blue "Second Port source ROM format: [img] (extracting required .img files only)" "Extracting PORTROM containing .img files"
-        IFS=',' read -ra PARTS <<< "$port_partition"
+        # Extract mix_port_part + system_ext + product from portrom2 zip.
+        # Same reasoning as the payload path above — system excluded intentionally.
         declare -a unzip_targets=()
-        for part in "${PARTS[@]}"; do
-          unzip_targets+=("${part}.img" "${part}_a.img" "${part}_b.img")
+        for part in "${mix_port_part[@]}" system_ext product; do
+            unzip_targets+=("${part}.img" "${part}_a.img" "${part}_b.img")
         done
-        blue "Selectively extracting only required .img files" "Extracting specific img files from PORTROM"
+        blue "Selectively extracting required .img files from portrom2" "Extracting specific img files from PORTROM2"
         unzip -q "${portrom2}" "${unzip_targets[@]}" -d "build/${version_name2}/" || \
-        error "Failed to extract specified .img files (verify if ${port_partition} exists in ROM)" \
-          "Failed to extract specified img files from PORTROM."
-         green "Specified partition extraction successful" "Selected partitions extracted successfully."
-        find "build/${version_name2}/" -type f -name "*.img" -exec cp -fv {} build/portrom/images/ \;
+        error "Failed to extract specified .img files from portrom2" \
+          "Failed to extract specified img files from PORTROM2."
+        green "portrom2 partition extraction successful" "Selected partitions extracted successfully."
+        # Copy only mix_port_part imgs now; system_ext + product handled below.
+        for i in "${mix_port_part[@]}"; do
+            if [[ -f "build/${version_name2}/${i}.img" ]]; then
+                cp -fv "build/${version_name2}/${i}.img" build/portrom/images/
+            else
+                yellow "portrom2: ${i}.img not found — skipping"
+            fi
+        done
         green "Port source ROM extraction complete [*.img]" "[*.img] extracted."
     fi
 fi
 app_patch_folder="${version_name2:-${version_name}}"
+
+# ── Mixed port: pull system_ext + product from portrom2 ───────────────────────
+# In a mixed port, portrom1 is typically an older/different device ROM (e.g. N3)
+# and portrom2 is the feature donor (e.g. X9 Ultra on ColorOS 16.1).
+# portrom1's system_ext and product won't have new 16.1 UI features — things
+# like the Now Bar, new lock screen services, 16.1 privileged apps, and RROs
+# all live in system_ext and product, not the oplus partitions.
+#
+# system is intentionally NOT taken from portrom2:
+#   - All smali patches (services.jar, framework.jar, KaoriosToolbox) target
+#     portrom1's system. Replacing it with portrom2's system throws away all
+#     of that and breaks the patching pipeline entirely.
+#   - portrom2's system may also have different VINTF expectations that
+#     conflict with baserom's vendor HALs.
+#
+# system_ext and product are safe to take from portrom2 because:
+#   - Pure APKs, privileged apps, RROs, overlays — no HAL interfaces at all.
+#   - vendor/odm/system_dlkm always come from baserom so the HAL boundary
+#     is never crossed regardless of what's in system_ext/product.
+#   - SELinux policy in system_ext stays internally consistent because it's
+#     versioned together with system_ext in the source ROM.
+#
+# The overwrite happens here at .img level so the parallel extract_partition
+# loop below operates on the correct image for each partition.
+if [[ "${mix_port}" == true ]] && [[ -n "${version_name2}" ]]; then
+    blue "Mixed port: overlaying portrom2 system_ext + product over portrom1" \
+         "Mixed port: pulling system_ext + product from portrom2"
+    for _mix_syspart in system_ext product; do
+        _p2_img="build/${version_name2}/${_mix_syspart}.img"
+        if [[ -f "${_p2_img}" ]]; then
+            green "Mixed port: portrom2 ${_mix_syspart}.img → overriding portrom1"
+            cp -fv "${_p2_img}" "build/portrom/images/${_mix_syspart}.img"
+        else
+            yellow "Mixed port: portrom2 ${_mix_syspart}.img not in cache — keeping portrom1 version"
+            yellow "  Tip: add ${_mix_syspart} to portparts or ensure portrom2 payload contains it"
+        fi
+    done
+    unset _mix_syspart _p2_img
+fi
+
 for part in system product system_ext my_product my_manifest;do
     extract_partition "build/baserom/images/${part}.img" build/baserom/images
 done
