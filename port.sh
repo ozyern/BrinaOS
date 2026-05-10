@@ -381,7 +381,7 @@ read_config() {
     echo "${val:-$default}"
 }
 
-port_partition=$(read_config "partition_to_port" "system,system_ext,product,my_product,my_manifest,my_stock,my_region")
+port_partition=$(read_config "partition_to_port" "system,system_ext,product,my_product,my_engineering,my_manifest,my_stock,my_region")
 super_list=$(read_config "possible_super_list" "system system_ext vendor product my_product odm my_engineering my_stock my_heytap my_carrier my_region my_bigball my_manifest my_company my_preload")
 repackext4=$(read_config "repack_with_ext4" "false")
 super_extended=$(read_config "super_extended" "false")
@@ -471,7 +471,7 @@ fi
 if [[ -n "$portparts" ]]; then
     read -ra mix_port_part <<< "$portparts"
 else
-    mix_port_part=("my_stock" "my_region" "my_manifest" "my_product" "my_heytap" "my_carrier" "my_bigball")
+    mix_port_part=("my_product" "my_engineering" "my_stock" "my_heytap" "my_carrier" "my_region" "my_bigball" "my_manifest" "my_company" "my_preload")
 fi
 if [[ "$mix_port" == true ]];then
     blue "Mixed Port Mode"
