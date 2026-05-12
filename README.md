@@ -37,7 +37,7 @@ A *Short n' Sweet* toolkit for porting ColorOS and Realme UI to Snapdragon 865, 
 
 ### 🎯 Target Port ROMs
 * **ColorOS 16:** OnePlus 15T (`16.0.5.703`), Find X9 Ultra (`16.0.5.702`)
-* **OxygenOS 16:** OnePlus 15 (`16.0.5.703`)
+* **OxygenOS 16:** OnePlus 15 (`16.0.7.201`)
 * **Realme UI 7:** Realme GT 8 Pro (`16.0.5.704`)
 
 
