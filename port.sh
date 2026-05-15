@@ -3555,7 +3555,7 @@ OP9PROEOF
                 green "OP9 Pro 12GB performance overlay applied"
             fi
 
-            # ── OP9 Pro: Additional performance props injected into bruce/build.prop
+            # ── OP9 Pro: Additional performance props injected into ozyern/build.prop
             # These are not already set by the Smoothness block above.
 
             # Vulkan pre-rotation: eliminates the GPU blit needed to rotate the
@@ -4444,18 +4444,18 @@ if [[ -d build/baserom/images/my_product/etc/breenospeech2 ]]; then
 fi
 rm -rf build/portrom/images/my_product/etc/fusionlight_profile/*
 cp -rf build/baserom/images/my_product/etc/fusionlight_profile/* build/portrom/images/my_product/etc/fusionlight_profile/ || true
-sed -i "/persist.vendor.display.pxlw.iris_feature=.*/d" build/portrom/images/my_product/etc/bruce/build.prop
+sed -i "/persist.vendor.display.pxlw.iris_feature=.*/d" build/portrom/images/my_product/etc/ozyern/build.prop
 if grep -q "ro.build.version.oplusrom.display" build/portrom/images/my_manifest/build.prop;then
     sed -i '/^ro.build.version.oplusrom.display=/ s/$/ /' build/portrom/images/my_manifest/build.prop
 else
-    sed -i '/^ro.build.version.oplusrom.display=/ s/$/ /' build/portrom/images/my_product/etc/bruce/build.prop
+    sed -i '/^ro.build.version.oplusrom.display=/ s/$/ /' build/portrom/images/my_product/etc/ozyern/build.prop
 fi
-propfile="build/portrom/images/my_product/etc/bruce/build.prop"
+propfile="build/portrom/images/my_product/etc/ozyern/build.prop"
 if [[ "${portIsColorOSGlobal}" == true ]]; then
-    MODEL_MAGIC="CPH2659,BRAND:OPPO"
-    MODEL_AIUNIT="CPH2659,BRAND:OPPO"
+    MODEL_MAGIC="CPH2841,BRAND:OPPO"
+    MODEL_AIUNIT="CPH2841,BRAND:OPPO"
 elif [[ "${portIsOOS}" == true ]]; then
-    MODEL_MAGIC="CPH2659,BRAND:OPPO"
+    MODEL_MAGIC="CPH2841,BRAND:OPPO"
     MODEL_AIUNIT="CPH2745,BRAND:OnePlus"
 else
     MODEL_MAGIC="PLK110,BRAND:OnePlus"
@@ -4713,7 +4713,7 @@ add_feature "oplus.hardware.audio.voice_denoise_support" build/portrom/images/my
 sed -i '/<\/extend_features>/i\
     <app_feature name="com.oplus.plc_charge.support">\
         <StringList args="true"/>\
-    </app_feature>' build/portrom/images/my_product/etc/extension/com.oplus.app-features-ext-bruce.xml
+    </app_feature>' build/portrom/images/my_product/etc/extension/com.oplus.app-features-ext-ozyern.xml
 add_feature_v2 app_feature "com.android.settings.device_rm^Realme Device"
 add_feature_v2 app_feature "com.oplus.fullscene_plc_charge.support^Fullscreen Bypass Charging^args=\"boolean:true\""
 if grep -q "oplus.software.audio.alert_slider" build/portrom/images/my_product/etc/permissions/* ;then
@@ -5025,7 +5025,7 @@ add_feature "oplus.software.display.sec_max_brightness_rm" build/portrom/images/
     # Fixeme A16 crash with AndroidRuntime: 	at com.android.server.display.feature.panel.OplusFeatureDCBacklight.applyApolloDCMode(OplusFeatureDCBacklight.java:300)
     #echo "persist.brightness.apollo=1"
 
-} >> build/portrom/images/my_product/etc/bruce/build.prop
+} >> build/portrom/images/my_product/etc/ozyern/build.prop
 
 if [[ ${base_product_device} == "OnePlus8Pro" ]] ;then 
     if [[ ${port_android_version} -gt 15 ]];then
@@ -5049,12 +5049,12 @@ if [[ ${base_product_device} == "OnePlus8Pro" ]] ;then
     echo "ro.oplus.display.dynamic.dither="
     echo "persist.oplus.display.initskipconfig="
 
-} >> build/portrom/images/my_product/etc/bruce/build.prop
+} >> build/portrom/images/my_product/etc/ozyern/build.prop
     fi
 fi
 
  if [[ $regionmark == "CN" ]];then
-     echo "ro.oplus.display.brightness.min_settings.rm=1,1,25,4.0,0" >> build/portrom/images/my_product/etc/bruce/build.prop
+    echo "ro.oplus.display.brightness.min_settings.rm=1,1,25,4.0,0" >> build/portrom/images/my_product/etc/ozyern/build.prop
  fi
 
 
@@ -5108,13 +5108,13 @@ fi
 		                blue "ColorOS${port_android_version} Camera Fix (6.0)" "ColorOS Camera Fix (6.0)"
 		                rm -rf build/portrom/images/my_product/app/OplusCamera
 		                rm -rf build/portrom/images/my_product/product_overlay/framework/com.oplus.camera.*.jar
-		                echo "ro.vendor.oplus.camera.isSupportLumo=1" >> build/portrom/images/my_product/etc/bruce/build.prop
+                        echo "ro.vendor.oplus.camera.isSupportLumo=1" >> build/portrom/images/my_product/etc/ozyern/build.prop
 		                unzip -o "devices/${base_product_device}/camera6.0-fix_cos.zip" -d build/portrom/images/
 		            elif [[ -f "devices/${base_product_device}/camera5.0-fix_cos.zip" ]] ;then
 		                blue "ColorOS${port_android_version} Camera Fix" "ColorOS Camera Fix"
 		                rm -rf build/portrom/images/my_product/app/OplusCamera
 		                rm -rf build/portrom/images/my_product/product_overlay/framework/com.oplus.camera.*.jar
-		                echo "ro.vendor.oplus.camera.isSupportLumo=1" >> build/portrom/images/my_product/etc/bruce/build.prop
+                        echo "ro.vendor.oplus.camera.isSupportLumo=1" >> build/portrom/images/my_product/etc/ozyern/build.prop
 		                unzip -o "devices/${base_product_device}/camera5.0-fix_cos.zip" -d build/portrom/images/
 		            fi
 		            if [[ -f "devices/${base_product_device}/camera6.0-fix_odm.zip" ]] ;then
@@ -5140,7 +5140,7 @@ fi
 		                blue "ColorOS Global ${port_android_version} Camera Fix (6.0)" "ColorOS Global Camera Fix (6.0)"
 		                rm -rf build/portrom/images/my_product/app/OplusCamera
 		                rm -rf build/portrom/images/my_product/product_overlay/framework/com.oplus.camera.*.jar
-		                echo "ro.vendor.oplus.camera.isSupportLumo=1" >> build/portrom/images/my_product/etc/bruce/build.prop
+                        echo "ro.vendor.oplus.camera.isSupportLumo=1" >> build/portrom/images/my_product/etc/ozyern/build.prop
 		                unzip -o "devices/${base_product_device}/camera6.0-fix_cos_global.zip" -d build/portrom/images/
 		                if [[ -f "devices/${base_product_device}/camera6.0-fix_odm.zip" ]] ;then
 		                    unzip -o "devices/${base_product_device}/camera6.0-fix_odm.zip" -d build/portrom/images/
@@ -5151,7 +5151,7 @@ fi
 		                blue "ColorOS Global ${port_android_version} Camera Fix" "ColorOS Global Camera Fix"
 		                rm -rf build/portrom/images/my_product/app/OplusCamera
 		                rm -rf build/portrom/images/my_product/product_overlay/framework/com.oplus.camera.*.jar
-		                echo "ro.vendor.oplus.camera.isSupportLumo=1" >> build/portrom/images/my_product/etc/bruce/build.prop
+                        echo "ro.vendor.oplus.camera.isSupportLumo=1" >> build/portrom/images/my_product/etc/ozyern/build.prop
 		                unzip -o "devices/${base_product_device}/camera5.0-fix_cos_global.zip" -d build/portrom/images/
 		                if [[ -f "devices/${base_product_device}/camera5.0-fix_odm.zip" ]] ;then
 		                    unzip -o "devices/${base_product_device}/camera5.0-fix_odm.zip" -d build/portrom/images/
@@ -5165,7 +5165,7 @@ fi
 		                blue "OxygenOS${port_android_version} Camera Fix (6.0)" "OxygenOS Camera Fix (6.0)"
 		                rm -rf build/portrom/images/my_product/app/OplusCamera
 		                rm -rf build/portrom/images/my_product/product_overlay/framework/com.oplus.camera.*.jar
-		                echo "ro.vendor.oplus.camera.isSupportLumo=1" >> build/portrom/images/my_product/etc/bruce/build.prop
+                        echo "ro.vendor.oplus.camera.isSupportLumo=1" >> build/portrom/images/my_product/etc/ozyern/build.prop
 		                unzip -o "devices/${base_product_device}/camera6.0-fix_oos.zip" -d build/portrom/images/
 		                if [[ -f "devices/${base_product_device}/camera6.0-fix_odm.zip" ]] ;then
 		                    unzip -o "devices/${base_product_device}/camera6.0-fix_odm.zip" -d build/portrom/images/
@@ -5176,7 +5176,7 @@ fi
 		                blue "OxygenOS${port_android_version} Camera Fix" "OxygenOS Camera Fix"
 		                rm -rf build/portrom/images/my_product/app/OplusCamera
 		                rm -rf build/portrom/images/my_product/product_overlay/framework/com.oplus.camera.*.jar
-		                echo "ro.vendor.oplus.camera.isSupportLumo=1" >> build/portrom/images/my_product/etc/bruce/build.prop
+                        echo "ro.vendor.oplus.camera.isSupportLumo=1" >> build/portrom/images/my_product/etc/ozyern/build.prop
 		                unzip -o "devices/${base_product_device}/camera5.0-fix_oos.zip" -d build/portrom/images/
 		                if [[ -f "devices/${base_product_device}/camera5.0-fix_odm.zip" ]] ;then
 		                    unzip -o "devices/${base_product_device}/camera5.0-fix_odm.zip" -d build/portrom/images/
@@ -5257,7 +5257,7 @@ fi
 
 if [[ -f devices/common/hdr_fix.zip ]] && [[ $base_android_version -le 14 ]];then
     unzip -o devices/common/hdr_fix.zip -d build/portrom/images/
-    echo "persist.sys.feature.uhdr.support=true" >> build/portrom/images/my_product/etc/bruce/build.prop
+    echo "persist.sys.feature.uhdr.support=true" >> build/portrom/images/my_product/etc/ozyern/build.prop
 fi
 
 # GApps injection (ColorOS CN) is intentionally disabled; flash your own package if needed.

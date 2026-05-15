@@ -385,7 +385,7 @@ add_feature_v2() {
             ;;
     esac
 
-    output_file="$dir/${base_file}-ext-bruce.xml"
+    output_file="$dir/${base_file}-ext-ozyern.xml"
     mkdir -p "$dir"
 
     # Create output file if it doesn't exist
@@ -508,19 +508,19 @@ remove_prop(){
 add_prop_v2(){
     prop=$1
     value=${2:-}
-    bruce_prop="build/portrom/images/my_product/etc/bruce/build.prop"
+    ozyern_prop="build/portrom/images/my_product/etc/ozyern/build.prop"
     portrom_prop="build/portrom/images/my_product/build.prop"
 
-    # If not in either file, add to bruce_prop
-    if ! grep -q "^${prop}=" "$bruce_prop" && ! grep -q "^${prop}=" "$portrom_prop"; then
+    # If not in either file, add to ozyern_prop
+    if ! grep -q "^${prop}=" "$ozyern_prop" && ! grep -q "^${prop}=" "$portrom_prop"; then
         blue "Adding prop: $prop=$value"
-        echo "$prop=$value" >> "$bruce_prop"
+        echo "$prop=$value" >> "$ozyern_prop"
         return
     fi
 
-    if grep -q "^${prop}=" "$bruce_prop"; then
-        blue "Editing prop (bruce): $prop=$value"
-        sed -i "s|^${prop}=.*|${prop}=${value}|" "$bruce_prop"
+    if grep -q "^${prop}=" "$ozyern_prop"; then
+        blue "Editing prop (ozyern): $prop=$value"
+        sed -i "s|^${prop}=.*|${prop}=${value}|" "$ozyern_prop"
     fi
 
     if grep -q "^${prop}=" "$portrom_prop"; then
@@ -536,13 +536,13 @@ remove_prop_v2() {
     
     if [[ -n ${force} ]]; then
         blue "Force remove prop: ${prop}"
-        sed -i -E "/^(${escaped_prop}=|${escaped_prop}\.)/s/^/#/" build/portrom/images/my_product/etc/bruce/build.prop
+        sed -i -E "/^(${escaped_prop}=|${escaped_prop}\.)/s/^/#/" build/portrom/images/my_product/etc/ozyern/build.prop
         sed -i -E "/^(${escaped_prop}=|${escaped_prop}\.)/s/^/#/" build/portrom/images/my_product/build.prop
     else
         # Check if the same prop (or prefix) exists in base ROM
         if ! grep -q -E "^(${escaped_prop}=|${escaped_prop}\.)" build/baserom/images/my_product/build.prop; then
             blue "Remove prop: ${prop}"
-            sed -i -E "/^(${escaped_prop}=|${escaped_prop}\.)/s/^/#/" build/portrom/images/my_product/etc/bruce/build.prop
+            sed -i -E "/^(${escaped_prop}=|${escaped_prop}\.)/s/^/#/" build/portrom/images/my_product/etc/ozyern/build.prop
         else
             blue "Keep prop (exists in base): ${prop}"
         fi
@@ -552,41 +552,41 @@ remove_prop_v2() {
 prepare_base_prop() {
     source_build_prop="build/baserom/images/my_product/build.prop"
     target_build_prop="build/portrom/images/my_product/build.prop"
-    bruce_prop="build/portrom/images/my_product/etc/bruce/build.prop"
+    ozyern_prop="build/portrom/images/my_product/etc/ozyern/build.prop"
 
     mkdir -p "$(dirname "$target_build_prop")"
-    mkdir -p "$(dirname "$bruce_prop")"
+    mkdir -p "$(dirname "$ozyern_prop")"
 
     [[ ! -d tmp ]] && mkdir tmp
 
     # Back up current portrom build.prop
     cp -f "$target_build_prop" tmp/build.prop.portrom.bak
 
-    # Back up existing bruce/build.prop if present (to selectively carry over later)
-    if [[ -f "$bruce_prop" ]]; then
-        cp -f "$bruce_prop" tmp/build.prop.portrom.bruce.bak
+    # Back up existing ozyern/build.prop if present (to selectively carry over later)
+    if [[ -f "$ozyern_prop" ]]; then
+        cp -f "$ozyern_prop" tmp/build.prop.portrom.ozyern.bak
     else
-        rm -f tmp/build.prop.portrom.bruce.bak 2>/dev/null
+        rm -f tmp/build.prop.portrom.ozyern.bak 2>/dev/null
     fi
 
     # Overwrite portrom build.prop with baserom content
     cp -f "$source_build_prop" "$target_build_prop"
 
-    # Initialize bruce.build.prop
-    echo "# Props added during port" > "$bruce_prop"
+    # Initialize ozyern.build.prop
+    echo "# Props added during port" > "$ozyern_prop"
 
     # Add import line (prevent duplicates)
-    if ! grep -q "^import /mnt/vendor/my_product/etc/bruce/build.prop" "$target_build_prop"; then
+    if ! grep -q "^import /mnt/vendor/my_product/etc/ozyern/build.prop" "$target_build_prop"; then
         echo "" >> "$target_build_prop"
-        echo "import /mnt/vendor/my_product/etc/bruce/build.prop" >> "$target_build_prop"
+        echo "import /mnt/vendor/my_product/etc/ozyern/build.prop" >> "$target_build_prop"
     fi
 }
 
-merge_portrom_bruce_props() {
-    old_bruce_prop="tmp/build.prop.portrom.bruce.bak"
-    [[ -f "$old_bruce_prop" ]] || return
+merge_portrom_ozyern_props() {
+    old_ozyern_prop="tmp/build.prop.portrom.ozyern.bak"
+    [[ -f "$old_ozyern_prop" ]] || return
 
-    # Only carry over camera/camerax-related props from the old bruce/build.prop
+    # Only carry over camera/camerax-related props from the old ozyern/build.prop
     while IFS='=' read -r key value; do
         [[ -z "$key" || "$key" =~ ^# ]] && continue
         [[ -z "$value" ]] && continue
@@ -597,13 +597,13 @@ merge_portrom_bruce_props() {
         if [[ "$key_lc" == *"camera"* ]] || [[ "$key_lc" == ro.camerax.* ]]; then
             add_prop_v2 "$key" "$value" || true
         fi
-    done < "$old_bruce_prop"
+    done < "$old_ozyern_prop"
 }
 
 add_prop_from_port() {
     base_build_prop="build/baserom/images/my_product/build.prop"
     old_portrom_prop="tmp/build.prop.portrom.bak"
-    bruce_prop="build/portrom/images/my_product/etc/bruce/build.prop"
+    ozyern_prop="build/portrom/images/my_product/etc/ozyern/build.prop"
 
     # Props that are always carried over from the old portrom
     force_keys=(
@@ -658,12 +658,12 @@ add_prop_from_port() {
     done
 
     # Write to final file
-    mkdir -p "$(dirname "$bruce_prop")"
-    cat "$temp_file" >> "$bruce_prop"
+    mkdir -p "$(dirname "$ozyern_prop")"
+    cat "$temp_file" >> "$ozyern_prop"
     rm -f "$temp_file"
 
-    # Carry over camera/camerax props from old portrom bruce/build.prop
-    merge_portrom_bruce_props || true
+    # Carry over camera/camerax props from old portrom ozyern/build.prop
+    merge_portrom_ozyern_props || true
 }
 
 smali_wrapper() {
@@ -829,7 +829,7 @@ get_oplusrom_version() {
     local prop_files=(
         "build/portrom/images/my_manifest/build.prop"
         "build/portrom/images/my_product/build.prop"
-        "build/portrom/images/my_product/etc/bruce/build.prop"
+        "build/portrom/images/my_product/etc/ozyern/build.prop"
         "build/portrom/images/product/build.prop"
         "build/portrom/images/system/system/build.prop"
     )
