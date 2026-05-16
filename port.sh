@@ -4452,10 +4452,10 @@ else
 fi
 propfile="build/portrom/images/my_product/etc/ozyern/build.prop"
 if [[ "${portIsColorOSGlobal}" == true ]]; then
-    MODEL_MAGIC="CPH2841,BRAND:OPPO"
-    MODEL_AIUNIT="CPH2841,BRAND:OPPO"
+    MODEL_MAGIC="CPH2659,BRAND:OPPO"
+    MODEL_AIUNIT="CPH2659,BRAND:OPPO"
 elif [[ "${portIsOOS}" == true ]]; then
-    MODEL_MAGIC="CPH2841,BRAND:OPPO"
+    MODEL_MAGIC="CPH2659,BRAND:OPPO"
     MODEL_AIUNIT="CPH2745,BRAND:OnePlus"
 else
     MODEL_MAGIC="PLK110,BRAND:OnePlus"

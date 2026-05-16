@@ -871,4 +871,4 @@ get_oplusrom_version() {
     echo "$max_version"
 }
 
-trap 'error "Script interrupted! Exiting to prevent accidental deletion." ; exit 1' SIGINT
+trap 'error "Script interrupted! Exiting to prevent accidental deletion." ; exit 1' INT
