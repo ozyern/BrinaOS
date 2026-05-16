@@ -4036,10 +4036,12 @@ if [[ -f "build/${app_patch_folder}/patched/HeyTapSpeechAssist.apk" ]]; then
 elif [[ -f "$targetAICallAssistant" ]];then
         blue "Unlock AI Call"
         cp -rf "$targetAICallAssistant" "tmp/$(basename "$targetAICallAssistant").bak"
+        SPEECH_MODEL=PLG110
+        [[ "$regionmark" != CN ]] && SPEECH_MODEL=CPH2841
         java -jar bin/apktool/APKEditor.jar d -f -i "$targetAICallAssistant" -o tmp/HeyTapSpeechAssist $extra_args
         targetSmali=$(find tmp -type f -name "AiCallCommonBean.smali")
         python3 bin/patchmethod_v2.py "$targetSmali" getSupportAiCall -return true
-        find tmp/HeyTapSpeechAssist -type f -name "*.smali" -exec sed -i "s/sget-object \([vp][0-9]\+\), Landroid\/os\/Build;->MODEL:Ljava\/lang\/String;/const-string \1, \"PLG110\"/g" {} +
+        find tmp/HeyTapSpeechAssist -type f -name "*.smali" -exec sed -i "s/sget-object \([vp][0-9]\+\), Landroid\/os\/Build;->MODEL:Ljava\/lang\/String;/const-string \1, \"$SPEECH_MODEL\"/g" {} +
         java -jar bin/apktool/APKEditor.jar b -f -i tmp/HeyTapSpeechAssist -o "build/${app_patch_folder}/patched/HeyTapSpeechAssist.apk" $extra_args
         cp -rfv "build/${app_patch_folder}/patched/HeyTapSpeechAssist.apk" "$targetAICallAssistant"
 fi
@@ -4067,7 +4069,7 @@ fi
 EXTEDNED_MODELS=("PJF110" "PEEM00" "PEDM00" "LE2120" "LE2121" "LE2123" "KB2000" "KB2001" "KB2005" "KB2003" "LE2110" "LE2111" "LE2112" "LE2113" "IN2010" "IN2011" "IN2012" "IN2013" "IN2020" "IN2021" "IN2022" "IN2023")
 targetAIUnit=$(find build/portrom/images/ -name "AIUnit.apk")
 MODEL=PLG110
-[[ "$regionmark" != CN ]] && MODEL=CPH2745
+[[ "$regionmark" != CN ]] && MODEL=CPH2841
 if [[ -f "build/${app_patch_folder}/patched/AIUnit.apk" ]]; then
     blue "Copying processed AIUnit.apk"
     cp -rfv "build/${app_patch_folder}/patched/AIUnit.apk" "$targetAIUnit"
@@ -4077,9 +4079,9 @@ elif [[ -f "$targetAIUnit" ]];then
     java -jar bin/apktool/APKEditor.jar d -f -i "$targetAIUnit" -o tmp/AIUnit $extra_args
     find tmp/AIUnit -type f -name "*.smali" -exec sed -i "s/sget-object \([vp][0-9]\+\), Landroid\/os\/Build;->MODEL:Ljava\/lang\/String;/const-string \1, \"$MODEL\"/g" {} +
     targetSmali=$(find tmp -type f -name "UnitConfig.smali")
-    python3 bin/patchmethod_v2.py "$targetSmali" isAllWhiteConditionMatch
-    python3 bin/patchmethod_v2.py "$targetSmali" isWhiteConditionsMatch
-    python3 bin/patchmethod_v2.py "$targetSmali" isSupport
+    python3 bin/patchmethod_v2.py "$targetSmali" isAllWhiteConditionMatch -return true
+    python3 bin/patchmethod_v2.py "$targetSmali" isWhiteConditionsMatch -return true
+    python3 bin/patchmethod_v2.py "$targetSmali" isSupport -return true
     unit_config_list=$(find tmp/AIUnit -type f -name "unit_config_list.json")
     jq --arg models_str "${EXTEDNED_MODELS[*]}" '
         ($models_str | split(" ")) as $new_models
@@ -4452,10 +4454,10 @@ else
 fi
 propfile="build/portrom/images/my_product/etc/ozyern/build.prop"
 if [[ "${portIsColorOSGlobal}" == true ]]; then
-    MODEL_MAGIC="CPH2659,BRAND:OPPO"
-    MODEL_AIUNIT="CPH2659,BRAND:OPPO"
+    MODEL_MAGIC="CPH2841,BRAND:OPPO"
+    MODEL_AIUNIT="CPH2841,BRAND:OPPO"
 elif [[ "${portIsOOS}" == true ]]; then
-    MODEL_MAGIC="CPH2659,BRAND:OPPO"
+    MODEL_MAGIC="CPH2841,BRAND:OPPO"
     MODEL_AIUNIT="CPH2745,BRAND:OnePlus"
 else
     MODEL_MAGIC="PLK110,BRAND:OnePlus"
