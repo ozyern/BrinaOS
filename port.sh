@@ -1724,6 +1724,10 @@ if [[ "${base_device_family}" == "OPSM8350" ]] && \
         # Fling velocity range — snappier scrolling feel
         set_prop "$SYSTEM_PATH/build.prop"    "ro.min.fling_velocity=160"
         set_prop "$SYSTEM_PATH/build.prop"    "ro.max.fling_velocity=8000"
+        # ── Sensors and Suspend (Power Saving)
+        set_prop "$SYSTEM_PATH/build.prop"    "persist.sys.suspend.mode=deep"
+        set_prop "$VENDOR_PATH/default.prop"  "persist.vendor.sensors.enable.rt_task=false"
+        set_prop "$VENDOR_PATH/default.prop"  "persist.vendor.sensors.support_wakelock=false"
         # Frame pacing — reduces judder in games by smoothing GPU frame delivery
         set_prop "$VENDOR_PATH/default.prop"  "vendor.perf.framepacing.enable=1"
         # Modem power save — meaningful idle battery improvement, no call quality impact
@@ -1878,6 +1882,7 @@ if [[ "${base_device_family}" == "OPSM8350" ]] && \
         set_prop "$VENDOR_PATH/default.prop"  "ro.vendor.perf.phr.enable=1"
         set_prop "$VENDOR_PATH/default.prop"  "vendor.perf.phr.render_ahead=2"
         set_prop "$VENDOR_PATH/default.prop"  "ro.vendor.perf.pfar.enable=1"
+        set_prop "$VENDOR_PATH/default.prop"  "vendor.perf.pfar.enable=1"
         set_prop "$VENDOR_PATH/default.prop"  "vendor.power.lpm_prediction=false"
         set_prop "$VENDOR_PATH/default.prop"  "persist.vendor.qti.lpm.prediction=false"
         set_prop "$VENDOR_PATH/default.prop"  "persist.vendor.qti.bus.dcvs=true"
@@ -1885,6 +1890,7 @@ if [[ "${base_device_family}" == "OPSM8350" ]] && \
         set_prop "$VENDOR_PATH/default.prop"  "persist.vendor.qti.llcc.retentionmode=1"
         set_prop "$VENDOR_PATH/default.prop"  "vendor.perf.llcc.wt_aggr=1"
         set_prop "$VENDOR_PATH/default.prop"  "vendor.perf.cci_boost=true"
+        set_prop "$VENDOR_PATH/default.prop"  "ro.vendor.perf.scroll_opt=1"
 
         # ── Memory bandwidth / LLC (SM8350)
         set_prop "$VENDOR_PATH/default.prop"  "vendor.power.bw_hwmon.enable=1"
@@ -1974,6 +1980,16 @@ on boot
     write /sys/devices/system/cpu/cpu5/cpufreq/schedutil/hispeed_freq 1132800
     write /sys/devices/system/cpu/cpu6/cpufreq/schedutil/hispeed_freq 1132800
     write /sys/devices/system/cpu/cpu7/cpufreq/schedutil/hispeed_freq 1228800
+    
+    # hispeed_load: custom thresholds to trigger hispeed_freq jump
+    write /sys/devices/system/cpu/cpu0/cpufreq/schedutil/hispeed_load 90
+    write /sys/devices/system/cpu/cpu1/cpufreq/schedutil/hispeed_load 90
+    write /sys/devices/system/cpu/cpu2/cpufreq/schedutil/hispeed_load 90
+    write /sys/devices/system/cpu/cpu3/cpufreq/schedutil/hispeed_load 90
+    write /sys/devices/system/cpu/cpu4/cpufreq/schedutil/hispeed_load 85
+    write /sys/devices/system/cpu/cpu5/cpufreq/schedutil/hispeed_load 85
+    write /sys/devices/system/cpu/cpu6/cpufreq/schedutil/hispeed_load 85
+    write /sys/devices/system/cpu/cpu7/cpufreq/schedutil/hispeed_load 80
 
     # ── LPM (Low Power Mode) prediction OFF ──────────────────────────────────
     # Speculative deep C-state costs 50-80μs wake latency on GB6 SC subtests
@@ -2046,7 +2062,6 @@ on boot
 
     # ── Sensor HAL power (SM8350) ─────────────────────────────────────────────
     # RT thread OFF: biggest sensor idle battery win — no impact on sensor latency
-    write /sys/bus/msm_subsys/devices/subsys9/system_status 1
     write /sys/kernel/debug/msm_vidc/ar50_lite/auto_resume 0
 
 
@@ -2093,8 +2108,6 @@ on boot
     write /sys/class/kgsl/kgsl-3d0/devfreq/governor msm-adreno-tz
     # force_no_nap=0: allow GPU NAP — saves 30-60mW between frames
     write /sys/class/kgsl/kgsl-3d0/force_no_nap 0
-    # pwrscale: use the full dynamic range of Adreno TZ
-    write /sys/class/kgsl/kgsl-3d0/pwrscale/trustzone/governor performance
 
     # ── LMKD ─────────────────────────────────────────────────────────────────
     write /sys/module/lowmemorykiller/parameters/enable_adaptive_lmk 1
@@ -2163,6 +2176,9 @@ on property:vendor.perf.workloadclassifier.enable=true
     write /sys/devices/system/cpu/bus_dcvs/SNOC/boost_freq 600000
     write /proc/sys/kernel/sched_boost 1
     write /proc/sys/kernel/sched_boost_no_override 1
+    write /proc/sys/kernel/sched_boost_type 2
+    write /sys/class/kgsl/kgsl-3d0/devfreq/adreno_tz/upthreshold 20
+    write /sys/class/kgsl/kgsl-3d0/devfreq/adreno_tz/downdifferential 3
 
 on property:vendor.perf.workloadclassifier.enable=false
     # Restore normal floors when GB exits
@@ -2178,6 +2194,11 @@ on property:vendor.perf.workloadclassifier.enable=false
     write /sys/devices/system/cpu/bus_dcvs/CCI/boost_freq 480000
     write /sys/devices/system/cpu/bus_dcvs/LLCC/boost_freq 200000
     write /sys/devices/system/cpu/bus_dcvs/SNOC/boost_freq 300000
+    write /proc/sys/kernel/sched_boost 0
+    write /proc/sys/kernel/sched_boost_no_override 0
+    write /proc/sys/kernel/sched_boost_type 0
+    write /sys/class/kgsl/kgsl-3d0/devfreq/adreno_tz/upthreshold 45
+    write /sys/class/kgsl/kgsl-3d0/devfreq/adreno_tz/downdifferential 10
     write /proc/sys/kernel/sched_boost 0
     write /proc/sys/kernel/sched_boost_no_override 0
 
@@ -2563,11 +2584,6 @@ EOF
             set_prop "$VENDOR_PATH/default.prop"  "vendor.perf.llcc.wt_aggr=1"
             set_prop "$VENDOR_PATH/default.prop"  "persist.vendor.qti.llcc.wt_aggr=1"
 
-            # GC type: CMS has lower stop-the-world pause than default ConcurrentCopying
-            # for a 512m heap. Stop-the-world GC during GB costs the full pause duration
-            # off the test score — CMS keeps pauses under 3ms vs 8-15ms default.
-            set_prop "$SYSTEM_PATH/build.prop"   "dalvik.vm.gctype=CMS"
-
             # mpctlv3: QTI perf daemon protocol v3 — enables cluster-level freq lock
             # and LLC bandwidth reservation. Required for both 1400 SC and 4000 MC.
             set_prop "$VENDOR_PATH/default.prop"  "vendor.perf.mpctlv3.enable=true"
@@ -2609,8 +2625,6 @@ EOF
             # ── OP9 Pro: LLCC retention + ART
             set_prop "$VENDOR_PATH/default.prop"  "persist.vendor.qti.llcc.retentionmode=1"
             set_prop "$VENDOR_PATH/default.prop"  "persist.vendor.qti.llcc.wt_aggr=1"
-            # CMS GC: <3ms stop-the-world vs 8-15ms default for 512m heap on X1.
-            set_prop "$SYSTEM_PATH/build.prop"    "dalvik.vm.gctype=CMS"
             # IORap: record + prefetch app file access — 40-60ms cold-launch saving.
             set_prop "$SYSTEM_PATH/build.prop"    "ro.iorapd.enable=true"
             set_prop "$SYSTEM_PATH/build.prop"    "persist.iorapd.enable=true"
@@ -2645,10 +2659,6 @@ EOF
             # Memory reclaim: free stale memory on each Activity change — keeps
             # free RAM high without hitting LMKD → fewer cold relaunches → less battery.
             set_prop "$VENDOR_PATH/default.prop"  "persist.vendor.qti.perfd.reclaim_memory=1"
-            # Sensor HAL: disable real-time thread for sensors not used by compositor.
-            # The RT sensor thread is the biggest idle battery drain outside CPU/display.
-            set_prop "$VENDOR_PATH/default.prop"  "persist.vendor.sensors.enable.rt_task=false"
-            set_prop "$VENDOR_PATH/default.prop"  "persist.vendor.sensors.support_wakelock=false"
             # WLAN: enhanced power save during screen-off periods.
             set_prop "$VENDOR_PATH/default.prop"  "persist.vendor.wifi.enhanced.power.save=1"
             set_prop "$VENDOR_PATH/default.prop"  "ro.wifi.power_save_mode=1"
@@ -2673,9 +2683,6 @@ EOF
             # Qualcomm IRM (Intelligent Resource Management) — battery-aware task scheduler.
             # Reduces background-task CPU cycles when battery < 20% without visible lag.
             set_prop "$VENDOR_PATH/default.prop"  "persist.vendor.qti.irm.enable=1"
-            # Deep suspend mode: PSCI s2idle — all cores enter retention state on screen-off.
-            # Correct OOS 14 kernel suspend path; "freeze" mode keeps CPUs clocked = more drain.
-            set_prop "$SYSTEM_PATH/build.prop"    "persist.sys.suspend.mode=deep"
             # Modem power: X60 5G PA is a major heat source.
             # NSA mode: 5G uses LTE anchor for control plane — modem radio can idle more.
             set_prop "$VENDOR_PATH/default.prop"  "persist.vendor.radio.nr_cfg=nsa"
@@ -2902,10 +2909,6 @@ on boot
     # ── Display backlight: reduce idle power
     # ABC (Automatic Brightness Control) sensor: slower poll when at stable brightness
     write /sys/class/sensors/als/poll_delay 200
-    # CABC (Content Adaptive Backlight Control): enable at display HAL level
-    write /sys/class/graphics/fb0/cabc_mode 2
-    # OLED pixel refresh: set to optimised write rate for 120Hz mode
-    write /sys/class/graphics/fb0/dynamic_fps 1
 
     # ── Memory: OP9 Pro specific
     # Raise nr_hugepages_mempolicy for THP on LPDDR5 — QHD+ texture maps benefit
@@ -3128,46 +3131,22 @@ on property:sys.battery.temp_high=0
 # LTPO display — property-triggered Hz management
 # Ensures 120Hz stays locked during active UI, drops during idle/video
 # ─────────────────────────────────────────────────────────────────────────────
-on property:ro.sf.override_refresh_rate_to_120=1
-    # Override to 120Hz: used during launcher animations, heavy scroll, gaming.
-    # Prevents LTPO from being over-eager about dropping Hz mid-animation.
-    write /sys/class/drm/card0-DSI-1/dynamic_fps 120
-    write /sys/class/graphics/fb0/dynamic_fps 1
+on property:sys.display.suspend=0
+    # Screen on: assert the active-floor behavior while the panel is awake.
+    write /sys/devices/system/cpu/cpu7/cpufreq/scaling_min_freq 1209600
+    write /sys/class/kgsl/kgsl-3d0/min_gpuclk 200000000
+    write /sys/class/kgsl/kgsl-3d0/devfreq/min_freq 200000000
 
-on property:ro.sf.override_refresh_rate_to_120=0
-    # Release override: LTPO governs freely again after animation completes.
-    write /sys/class/drm/card0-DSI-1/dynamic_fps 0
-    write /sys/class/graphics/fb0/dynamic_fps 1
-
-on property:sys.screen_on=1
-    # Screen wakes: immediately assert 120Hz floor — avoids waking at 60Hz
-    # then ramping up, which is visible as a flicker on first frame.
-    write /sys/devices/system/cpu/cpu7/cpufreq/scaling_min_freq 1516800
-    write /sys/class/kgsl/kgsl-3d0/min_gpuclk 257000000
-    write /sys/class/kgsl/kgsl-3d0/devfreq/min_freq 257000000
-    # Re-assert SF 120Hz active path — display drivers sometimes reset this on wake.
-    write /sys/class/drm/card0-DSI-1/dynamic_fps 0
-
-on property:sys.screen_on=0
-    # Screen off: drop X1 floor — no compositor work needed.
-    # X1 can idle at 614MHz instead of burning power at 1516MHz in the dark.
+on property:sys.display.suspend=1
+    # Screen off: allow deeper idle floors when the display suspends.
     write /sys/devices/system/cpu/cpu7/cpufreq/scaling_min_freq 614400
-    # GPU: minimum clock on screen-off — AOD at 1Hz needs almost nothing.
     write /sys/class/kgsl/kgsl-3d0/min_gpuclk 157000000
     write /sys/class/kgsl/kgsl-3d0/devfreq/min_freq 157000000
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Vsync-triggered render thread boost
-# Fires at every vsync — ensures CPU is at target freq before the frame starts
-# This eliminates the most common cause of dropped frames: CPU under-frequency
-# at the moment SF begins composition.
+# This path is dead on stock OOS/ColorOS, so keep the boost in the display path.
 # ─────────────────────────────────────────────────────────────────────────────
-on property:vendor.vsync_event_phase.sf=1
-    write /dev/cpuctl/top-app/cpu.uclamp.min 55
-    write /sys/devices/system/cpu/cpu7/cpufreq/schedutil/hispeed_freq 1516800
-
-on property:vendor.vsync_event_phase.sf=0
-    write /dev/cpuctl/top-app/cpu.uclamp.min 55
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Kswapd affinity — keep memory reclaim off the prime core
@@ -3181,204 +3160,85 @@ on property:sys.boot_completed=1
     # kswapd's affinity mask: 0xf = cores 0,1,2,3 (binary 00001111).
     write /proc/sys/kernel/kswapd_cpu_affinity 0xf || true
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Adreno 660 — GPU thermal stepping (888 is known for GPU thermal throttle)
-# The 888's GPU hits 95°C within 60s of sustained gaming — these steps ensure
-# the transition to lower freqs is smooth rather than a sudden cliff drop.
-# ─────────────────────────────────────────────────────────────────────────────
-    # GPU thermal governor: msm-adreno-tz reads both util AND temp.
-    # adj_level=6: allow TZ to step down 6 power levels at once when over-temp.
-    # Without this, TZ drops one level/interval — takes 6×interval to reach safe freq,
-    # spending prolonged time at a hot mid-freq rather than quickly reaching a cool floor.
+on boot
+
+    # GPU thermal governor tuning
     write /sys/class/kgsl/kgsl-3d0/devfreq/adreno_tz/adj_level 6 || true
-    # thermal_pwrlevel=4: hard ceiling for thermal throttle.
-    # Level 4 ≈ 450MHz — still smooth enough for UI; avoids the 135MHz cliff that
-    # causes visible stutters. The 888 vapour chamber recovers quickly from 450MHz.
-    write /sys/class/kgsl/kgsl-3d0/thermal_pwrlevel 4 || true
-    # GPU busy threshold for TZ: only count the GPU as "busy" above 15% utilisation.
-    # Below this, TZ will not try to ramp up — prevents unnecessary GPU wake during
-    # lightweight UI animations (launcher drawer, notification panel expansion).
-    write /sys/class/kgsl/kgsl-3d0/devfreq/adreno_tz/upthreshold 35 || true
-    write /sys/class/kgsl/kgsl-3d0/devfreq/adreno_tz/downdifferential 5 || true
+    write /sys/class/kgsl/kgsl-3d0/devfreq/adreno_tz/upthreshold 45 || true
+    write /sys/class/kgsl/kgsl-3d0/devfreq/adreno_tz/downdifferential 10 || true
+    write /sys/class/kgsl/kgsl-3d0/devfreq/adreno_tz/use_calc_freq 1 || true
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Adreno 660 — GPU preemption + context fault recovery
-# ─────────────────────────────────────────────────────────────────────────────
-    # Preemption timeout: Adreno 660 supports preemption between render contexts.
-    # Default 5000ms is far too long — a stalled low-priority context blocks
-    # the compositor for multiple vsync intervals (8.3ms each at 120Hz).
-    # 500ms: compositor never waits more than 500ms to preempt a game render pass.
-    write /sys/class/kgsl/kgsl-3d0/preemption_timeout 500
-    # preempt_level=2: enable full preemption (vs level 0=disabled, 1=ringbuffer only).
-    # Level 2 allows the kernel to interrupt mid-draw-call, eliminating compositor
-    # priority inversions during heavy game renders while the UI is scrolling.
-    write /sys/class/kgsl/kgsl-3d0/preempt_level 2
-    # Context fault tolerance: allow GPU to recover from a single context fault
-    # before declaring the GPU hung. Prevents unnecessary GPU resets in game apps
-    # that occasionally trigger shader compiler faults.
-    write /sys/class/kgsl/kgsl-3d0/fault_count 2
-
-    # ── Adreno 660 — power level stepping
-    # Number of power level steps the TZ governor can take per interval.
-    # Default 1 means GPU ramps up one OPP at a time — slow to reach 750MHz.
-    # 2 steps: GPU reaches target frequency twice as fast on burst loads (scrolling
-    # into a heavy webpage, launching a game) without bypassing thermal controls.
-    write /sys/class/kgsl/kgsl-3d0/max_pwrlevel_change 2
-    # Minimum power level before TZ governer considers the GPU idle for NAP.
-    # Level 6 = ~350MHz — GPU must coast below this before entering NAP sleep.
-    # Prevents premature NAP during micro-pauses in compositor work at 120Hz.
-    write /sys/class/kgsl/kgsl-3d0/min_pwrlevel 6
-
-    # ── Adreno 660 — DCVS (display-aware clock scaling)
-    # adreno_tz reads display refresh rate to bias GPU freq decisions.
-    # On a 120Hz LTPO panel this keeps the GPU from under-voting during fast scroll.
-    write /sys/class/kgsl/kgsl-3d0/devfreq/adreno_tz/use_calc_freq 1
-
-# ─────────────────────────────────────────────────────────────────────────────
-# CPU frequency — A55 hispeed_freq + energy_perf_bias
-# ─────────────────────────────────────────────────────────────────────────────
-    # hispeed_freq on A55 (cpu0-3): jump directly to 1132800 on first load spike.
-    # Without this, A55 starts at 300MHz and climbs one OPP at a time — each OPP
-    # step takes one schedutil rate_limit_us interval (2ms). On a notification
-    # arrival or a quick UI animation this causes 6-10ms of under-frequency.
-    write /sys/devices/system/cpu/cpu0/cpufreq/schedutil/hispeed_freq 1132800
-    write /sys/devices/system/cpu/cpu1/cpufreq/schedutil/hispeed_freq 1132800
-    write /sys/devices/system/cpu/cpu2/cpufreq/schedutil/hispeed_freq 1132800
-    write /sys/devices/system/cpu/cpu3/cpufreq/schedutil/hispeed_freq 1132800
-
-    # energy_perf_bias: Linux kernel hint to the CPU P-state driver.
-    # 0 = maximum performance (no bias toward energy saving).
-    # On SM8350 this disables the hardware prefetcher throttling in Cortex-A78
-    # and X1 that activates at high utilisation to save power — we don't want
-    # that during foreground animation or game renders.
+    # CPU energy_perf_bias
     write /sys/devices/system/cpu/cpu4/power/energy_perf_bias 0
     write /sys/devices/system/cpu/cpu5/power/energy_perf_bias 0
     write /sys/devices/system/cpu/cpu6/power/energy_perf_bias 0
     write /sys/devices/system/cpu/cpu7/power/energy_perf_bias 0
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Scheduler — autogroup + energy-aware scheduling
-# ─────────────────────────────────────────────────────────────────────────────
-    # Autogroup: kernel automatically creates a task group per session leader.
-    # On Android this groups each app's threads — prevents background apps from
-    # stealing time slices from the foreground app's render thread.
+    # Scheduler
     write /proc/sys/kernel/sched_autogroup_enabled 1
-
-    # Energy-aware scheduling: EAS on SM8350 uses Qualcomm's energy model to
-    # place tasks on the most efficient CPU cluster for their utilisation level.
-    # Must be 1 for EAS to be active — some OOS/ColorOS builds disable it.
     write /sys/devices/system/cpu/sched_energy_aware 1
-
-    # sched_load_boost: boost utilisation signal for top-app tasks.
-    # 15% boost means a task at 80% util is seen as 92% — more likely to stay
-    # on A78/X1 rather than being migrated to A55 between frames.
     write /sys/devices/system/cpu/cpu7/sched_load_boost 15
     write /sys/devices/system/cpu/cpu4/sched_load_boost 10
     write /sys/devices/system/cpu/cpu5/sched_load_boost 10
     write /sys/devices/system/cpu/cpu6/sched_load_boost 10
 
-# ─────────────────────────────────────────────────────────────────────────────
-# UFS 3.1 — HPB (Host Performance Boost) + additional queue tuning
-# ─────────────────────────────────────────────────────────────────────────────
-    # HPB (Host Performance Boost): host stores L2P (logical-to-physical) mapping
-    # table for hot LBAs in DRAM. On subsequent reads, the host provides the physical
-    # address directly — bypasses UFS internal mapping lookup (~20-50μs saved per read).
-    # Critical for dex file access during app launch cold-start.
+    # Sensor HAL power
+    write /sys/kernel/debug/msm_vidc/ar50_lite/auto_resume 0
+
+    # UFS HPB
     write /sys/bus/platform/drivers/ufshcd/1d84000.ufshc/hpb_enable 1 || true
-    # HPB: allow up to 4096 cached mapping entries (default 512).
-    # dex files for large apps (System UI, Settings, Chrome) span many LBAs.
     write /sys/bus/platform/drivers/ufshcd/1d84000.ufshc/hpb_host_control/hpb_map_cnt 4096 || true
 
-    # UFS write turbo: allow UFS to use all available buffer for write bursts.
-    # During app install or large file copy, bursty writes would otherwise stall
-    # waiting for the UFS internal buffer to flush.
-    write /sys/block/sda/queue/write_cache on 1 || true
-
-    # I/O scheduler: mq-deadline with these queue depths gives optimal throughput
-    # for the mixed random+sequential pattern of app workloads on UFS 3.1.
-    # front_merges=1: merge adjacent front requests — reduces seeks on dex reads.
+    # I/O tuning for all UFS LUNs
+    write /sys/block/sda/queue/write_cache "write back"
     write /sys/block/sda/queue/iosched/front_merges 1 || true
-    # fifo_batch=16: process 16 expired requests per scheduler tick vs default 16.
-    # Higher batch = better throughput at the cost of slightly more latency variance.
     write /sys/block/sda/queue/iosched/fifo_batch 16 || true
+    write /sys/block/sda/queue/scheduler mq-deadline || true
+    write /sys/block/sda/queue/read_ahead_kb 2048 || true
+    write /sys/block/sda/queue/nr_requests 256 || true
+    write /sys/block/sda/queue/add_random 0 || true
+    write /sys/block/sda/queue/wbt_lat_usec 75000 || true
+    write /sys/block/sda/queue/rq_affinity 2 || true
+    write /sys/block/sdb/queue/scheduler mq-deadline || true
+    write /sys/block/sdb/queue/read_ahead_kb 2048 || true
+    write /sys/block/sdb/queue/nr_requests 256 || true
+    write /sys/block/sdb/queue/add_random 0 || true
+    write /sys/block/sdb/queue/wbt_lat_usec 75000 || true
+    write /sys/block/sdb/queue/rq_affinity 2 || true
+    write /sys/block/sdc/queue/scheduler mq-deadline || true
+    write /sys/block/sdc/queue/read_ahead_kb 2048 || true
+    write /sys/block/sdc/queue/nr_requests 256 || true
+    write /sys/block/sdc/queue/add_random 0 || true
+    write /sys/block/sdc/queue/wbt_lat_usec 75000 || true
+    write /sys/block/sdc/queue/rq_affinity 2 || true
+    write /sys/block/sdd/queue/scheduler mq-deadline || true
+    write /sys/block/sdd/queue/read_ahead_kb 2048 || true
+    write /sys/block/sdd/queue/nr_requests 256 || true
+    write /sys/block/sdd/queue/add_random 0 || true
+    write /sys/block/sdd/queue/wbt_lat_usec 75000 || true
+    write /sys/block/sdd/queue/rq_affinity 2 || true
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Thermal zone — expanded OP9 Pro sensor coverage
-# ─────────────────────────────────────────────────────────────────────────────
-    # zone3 = PMIC (PM8350) thermal sensor — power management IC.
-    # Fast poll: PMIC temp directly affects BCL (battery current limit) threshold.
-    # If the PMIC overheats, BCL cuts CPU/GPU frequency hard — we want early warning.
+    # Thermal zones
     write /sys/class/thermal/thermal_zone3/polling_delay 1000
-    # zone4 = Wi-Fi/modem PA thermal — 5G NR sub-6 PA runs hot.
-    # 2s poll is sufficient; PA thermal is slow-moving vs CPU junction temp.
     write /sys/class/thermal/thermal_zone4/polling_delay 2000
-    # zone6 = Adreno 660 GPU thermal — critical for sustained gaming workloads.
-    # 1s polling: GPU temp can spike 15°C/s in heavy Vulkan workloads on 888.
     write /sys/class/thermal/thermal_zone6/polling_delay 1000
-    # zone7 = NPU/DSP thermal — used by Hasselblad camera AI pipeline.
-    # 3s: NPU workloads are bursty; slow poll avoids unnecessary throttle interrupt.
     write /sys/class/thermal/thermal_zone7/polling_delay 3000
-    # zone11 = NSPSS (Neural Signal Processing) — runs during Face Unlock.
     write /sys/class/thermal/thermal_zone11/polling_delay 2000
-    # zone13 = CPU Prime cluster junction — the most critical thermal sensor.
-    # 500ms: X1 can gain 8-10°C/s under sustained load. 500ms catches within 5°C.
     write /sys/class/thermal/thermal_zone13/polling_delay 500
 
-# ─────────────────────────────────────────────────────────────────────────────
-# VM — additional tuning for QHD+ LPDDR5 working set
-# ─────────────────────────────────────────────────────────────────────────────
-    # Zone reclaim: disable NUMA zone reclaim — SM8350 is UMA (single memory node).
-    # Enabling it would cause unnecessary memory compaction on a UMA system.
+    # VM
     write /proc/sys/vm/zone_reclaim_mode 0
-
-    # Proactive compaction: kernel compacts memory periodically in background
-    # rather than waiting for allocation failure. Reduces allocation latency
-    # during heavy UI transitions (launcher, multitasking) by keeping large
-    # contiguous pages available for THP and GPU DMA allocations.
-    write /proc/sys/vm/compaction_proactiveness 20
-
-    # percpu_pagelist_high_fraction: larger per-CPU page cache.
-    # Higher value = fewer cross-CPU page allocations = lower allocation latency.
-    # On SM8350 with 8 CPUs, each CPU gets a larger hot-page pool for its allocations.
-    write /proc/sys/vm/percpu_pagelist_high_fraction 8
-
-    # Dirty writeback: coalesce dirty page writebacks into fewer, larger UFS bursts.
-    # 6000cs (60s writeback interval) batches dirty data — UFS 3.1 handles large
-    # sequential writes far more efficiently than many small random writes.
-    # dirty_writeback=3000cs (30s): batches enough for large sequential UFS writes
-    # without the 60s I/O stall hitches that 6000cs caused during heavy file ops.
     write /proc/sys/vm/dirty_writeback_centisecs 3000
     write /proc/sys/vm/dirty_expire_centisecs 3000
 
-    # numa_balancing: disable — irrelevant on UMA, wastes CPU time scanning pages.
-    write /proc/sys/kernel/numa_balancing 0
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Network — IPv6 buffer + TCP optimisations for Wi-Fi 6 / 5G NR
-# ─────────────────────────────────────────────────────────────────────────────
-    # IPv6 socket buffers — Wi-Fi 6 and 5G NR both use IPv6 by default.
-    # Without these the kernel uses IPv4 rmem/wmem values for v6 sockets,
-    # which were set for peak throughput not latency. Match the v4 values.
+    # Network
     write /proc/sys/net/ipv6/conf/all/use_tempaddr 2
     write /proc/sys/net/core/rmem_max 8388608
     write /proc/sys/net/core/wmem_max 8388608
-    # TCP BBR: already set; ensure it also applies to IPV6 sockets
     write /proc/sys/net/ipv4/tcp_congestion_control bbr
-
-    # TCP MPTCP (Multipath TCP): not available on OOS kernel, but if present:
-    # allows simultaneous Wi-Fi + 5G data paths. Leave as comment — enabling
-    # on non-MPTCP kernels harmlessly fails the write.
-    # write /proc/sys/net/mptcp/enabled 1
-
-    # tcp_limit_output_bytes: limit bytes queued per TCP socket.
-    # 131072 (128KB) prevents a single socket from holding the TX queue
-    # while latency-sensitive traffic (VoIP, gaming) waits behind it.
     write /proc/sys/net/ipv4/tcp_limit_output_bytes 131072
-
-    # tcp_notsent_lowat: wake the app to send more data only when the kernel
-    # send buffer drops below 131072. Reduces CPU wakeups on streaming sockets
-    # (YouTube, Spotify) which otherwise wake the socket thread too early.
-    write /proc/sys/net/ipv4/tcp_notsent_lowat 131072
+    write /proc/sys/net/ipv4/tcp_notsent_lowat 65536
+    write /proc/sys/net/ipv4/tcp_mtu_probing 1
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Warp Charge 65T — enhanced thermal-aware charging
@@ -3552,6 +3412,10 @@ OP9PROEOF
                 # 12GB phones rarely need compressed swap — smaller zram = less CPU for compression
                 sed -i 's|zram0/disksize 3221225472|zram0/disksize 2147483648|' \
                     "$VENDOR_PATH/etc/init/op9_sched.rc" 2>/dev/null || true
+                
+                # replace the lz4 write for 12GB variant
+                sed -i 's|zram0/comp_algorithm lz4|zram0/comp_algorithm zstd|' \
+                    "$VENDOR_PATH/etc/init/op9_sched.rc"
                 green "OP9 Pro 12GB performance overlay applied"
             fi
 
@@ -3562,8 +3426,6 @@ OP9PROEOF
             # framebuffer for portrait apps on a landscape-native display pipeline.
             # On QHD+ panels this blit costs 0.3-0.5ms/frame — saved every frame.
             set_prop "$VENDOR_PATH/default.prop" "ro.surface_flinger.enable_frame_rate_override=false"
-            set_prop "$VENDOR_PATH/default.prop" "ro.surface_flinger.set_idle_timer_ms=700"
-            set_prop "$VENDOR_PATH/default.prop" "ro.surface_flinger.set_touch_timer_ms=300"
 
             # JIT threshold: lower value = hot methods promoted to AOT faster.
             # On X1 the JIT interpreter overhead vs AOT is ~8% IPC — reducing
@@ -3586,10 +3448,6 @@ OP9PROEOF
             set_prop "$SYSTEM_PATH/build.prop" "ro.min.fling_velocity=160"
             set_prop "$SYSTEM_PATH/build.prop" "ro.max.fling_velocity=24000"
 
-            # GC: CMS has lower stop-the-world pause than default ConcurrentCopying
-            # for a 512m heap — each GC pause costs the full duration off benchmarks.
-            set_prop "$SYSTEM_PATH/build.prop" "dalvik.vm.gctype=CMS"
-
             # PHR (Predictive Headroom): pre-boosts CPU before the next frame budget opens.
             # render_ahead=3: look 3 frames ahead on 120Hz = 25ms headroom window.
             # On OP9 Pro LTPO this eliminates the 8-12ms freq ramp at frame start.
@@ -3597,6 +3455,14 @@ OP9PROEOF
             set_prop "$VENDOR_PATH/default.prop" "ro.vendor.perf.phr.enable=1"
             set_prop "$VENDOR_PATH/default.prop" "vendor.perf.phr.render_ahead=3"
             set_prop "$VENDOR_PATH/default.prop" "ro.vendor.perf.pfar.enable=1"
+
+            # ── OP9 Pro: Gaming-specific props
+            # QTI game mode HAL — enables the perf daemon's game-specific boost profile
+            set_prop "$VENDOR_PATH/default.prop" "persist.vendor.qti.game_mode_support=1"
+            # PFAR game variant
+            set_prop "$VENDOR_PATH/default.prop" "vendor.perf.pfar.game_enable=1"
+            # Disable background dexopt during active gaming — prevents stutter from recompile
+            set_prop "$SYSTEM_PATH/build.prop" "persist.sys.jobs.delay_gaming=true"
 
             # Sched boost on top-app: EAS boost when top-app has CPU demand.
             set_prop "$VENDOR_PATH/default.prop" "vendor.perf.sched_boost_on_top_app=1"
@@ -3643,10 +3509,6 @@ OP9PROEOF
             set_prop "$VENDOR_PATH/default.prop" "persist.vendor.wifi.enhanced.power.save=1"
             set_prop "$VENDOR_PATH/default.prop" "ro.wifi.power_save_mode=1"
             set_prop "$VENDOR_PATH/default.prop" "persist.vendor.wifi.scan.allow_low_latency_scan=0"
-
-            # Sensors: RT task and wakelock disabled — biggest idle battery win outside CPU.
-            set_prop "$VENDOR_PATH/default.prop" "persist.vendor.sensors.enable.rt_task=false"
-            set_prop "$VENDOR_PATH/default.prop" "persist.vendor.sensors.support_wakelock=false"
 
             # pm.dexopt: aggressive speed compilation for installed + shared APKs.
             set_prop "$SYSTEM_PATH/build.prop" "pm.dexopt.install=speed"
@@ -4017,14 +3879,22 @@ fi
 # 16.1 introduced a new mediaserver HAL binding that crashes on ported devices
 # unless the pre-built fix zip is applied.  Gated on version string and zip
 # presence so the block is a safe no-op on 16.0.x sources.
-# (cherry-picked from toraidl/coloros_port@5d76038)
+# (ozyern/Rapchick — decode-fix)
 if [[ "${port_oplusrom_version}" == 16.1* ]]; then
-    ensure_resource_available "devices/common/16.1-mediaserver-fix.zip" || true
-    if [[ -f "devices/common/16.1-mediaserver-fix.zip" ]]; then
-        blue "Fixing mediaserver crashes (ColorOS/OOS 16.1)"
-        unzip -o devices/common/16.1-mediaserver-fix.zip -d build/portrom/images/
+    ensure_resource_available "devices/common/decode-fix.zip" || true
+    if [[ -f "devices/common/decode-fix.zip" ]]; then
+        blue "Mediaserver fix (OOS 16.1) — applying decode-fix"
+        if unzip -o devices/common/decode-fix.zip -d build/portrom/images/; then
+            if [[ -f "build/portrom/images/system_ext/lib/liboplusbindermonitor.so" ]]; then
+                green "Mediaserver fix applied — liboplusbindermonitor.so in place"
+            else
+                yellow "decode-fix.zip extracted but .so not found — zip may be malformed"
+            fi
+        else
+            yellow "decode-fix.zip extraction failed — mediaserver crashes may occur"
+        fi
     else
-        yellow "16.1-mediaserver-fix.zip not found — skipping (place it in devices/common/ if crashes occur)"
+        yellow "decode-fix.zip not found — skipping (place in devices/common/ if mediaserver crashes)"
     fi
 fi
 
