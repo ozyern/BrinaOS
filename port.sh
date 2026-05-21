@@ -247,14 +247,6 @@ fe_finish() {
 # ── Print banner immediately on start ────────────────────────────────────────
 fe_banner
 
-# ──────────────────────────────────────────────────────────────────────────────
-# GitHub Release auto-download logic (from toraidl/coloros_port)
-# ──────────────────────────────────────────────────────────────────────────────
-
-export REPO_OWNER="${REPO_OWNER:-toraidl}"
-export REPO_NAME="${REPO_NAME:-coloros_port}"
-export RELEASE_TAG="${RELEASE_TAG:-assets}"
-
 check_gh_cli() {
   if ! command -v gh &> /dev/null ; then
     error "GitHub CLI (gh) not found."
@@ -4034,8 +4026,6 @@ fi
 #
 # Fix: patch OplusDeviceInfoUtils.shouldUseColorOS161Resources → always true.
 # This is correct for both ColorOS 16.1 and OxygenOS 16.1 (same APK code path).
-#
-# Cherry-picked from toraidl/coloros_port@5d76038 + typo fix @6ac8d22
 # ─────────────────────────────────────────────────────────────────────────────
 if [[ "${port_oplusrom_version}" == 16.1* ]]; then
     fe_section "COLOROS 16.1 SETTINGS BANNER FIX" "About Device card / shouldUseColorOS161Resources"
