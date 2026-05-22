@@ -4,7 +4,7 @@
 
 *That's that me espresso... but for your phone.* ☕
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-pink.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-pink.svg?style=for-the-badge)](https://www.gnu.org/licenses/gpl-3.0)
 [![Maintenance](https://img.shields.io/badge/Maintained%3F-yes-ff69b4.svg?style=for-the-badge)](https://github.com/blahajcoding/coloros_port/graphs/commit-activity)
 
 A *Short n' Sweet* toolkit for porting ColorOS and Realme UI to Snapdragon 865, 870, and 888 series devices. 
