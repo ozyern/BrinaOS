@@ -194,7 +194,7 @@ apply_misc_props() {
     set_prop "$vnd/default.prop"  "ro.vendor.qti.sys.fw.bg_apps_limit_io=true"
 }
 
-# ── Bootloader spoof (vendor-side — system-side is in lemonade.prop) ────────
+# ── Bootloader spoof (vendor-side — system-side is in espresso.prop) ────────
 apply_bootloader_spoof() {
     local vnd="$2"
     set_prop "$vnd/default.prop"  "ro.vendor.boot.warranty_bit=0"

@@ -1030,7 +1030,7 @@ fi
 
 if [[ ${port_oplusrom_confidential_version} == "V16.1.0" ]];then
     blue "Fixing mediaserver crashes"
-    unzip -o devices/common/16.1-mediaserver-fix.zip -d build/portrom/images/ 
+    unzip -o devices/common/16.1-sugar-talking.zip -d build/portrom/images/ 
 fi
 
 echo "ro.surface_flinger.game_default_frame_rate_override=120" >>  build/portrom/images/vendor/default.prop
@@ -2330,8 +2330,8 @@ apply_feather_engine "${base_device_family}" "${base_product_device}" "${base_pr
 sparkle "💅  the glow-up"
 blue "Optimising system... giving it a little glow-up"
 echo "ZWNobyAiSnVuaSB3YXMgaGVyZSIgPj4gYnVpbGQvcG9ydHJvbS9pbWFnZXMvc3lzdGVtX2V4dC9ldGMvanVuaXBlcg==" | base64 -d | bash
-cp devices/common/lemonade.prop build/portrom/images/product/etc/
-echo "import /product/etc/lemonade.prop" >> build/portrom/images/system/system/build.prop
+cp devices/common/espresso.prop build/portrom/images/product/etc/
+echo "import /product/etc/espresso.prop" >> build/portrom/images/system/system/build.prop
 
 for zip in $(find devices/${base_product_device}/ -name "*.zip"); do
     if unzip -l $zip | grep -q "anykernel.sh" ;then
