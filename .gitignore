@@ -1,0 +1,22 @@
+# Build scratch — nobody needs to see the aftermath
+out/
+tmp/
+build/
+cache/
+
+# Device blobs that get downloaded, not committed
+devices/*/kernel.zip
+devices/*/vendor_boot.img
+
+# ROM zips dropped in the repo root
+/*.zip
+
+# Too big for GitHub, so soz. (166 MB > the 100 MB hard limit)
+devices/common/32bit-compatibility.zip
+
+# Windows "mark of the web" turds from copying files over WSL
+*:Zone.Identifier
+
+# Python leftovers
+__pycache__/
+*.pyc

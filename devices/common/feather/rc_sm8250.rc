@@ -1,0 +1,213 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# op8_sched.rc — SM8250 (Snapdragon 865) tuning — Feather Engine
+# Cluster layout: cpu0-3 = Cortex-A55 | cpu4-6 = Cortex-A77 | cpu7 = Cortex-A77 Prime
+# ─────────────────────────────────────────────────────────────────────────────
+
+on boot
+
+    # ── CPU Scheduler ────────────────────────────────────────────────────────
+    write /proc/sys/kernel/sched_migration_cost_ns 3500000
+    write /proc/sys/kernel/sched_upmigrate 75
+    write /proc/sys/kernel/sched_downmigrate 60
+    write /proc/sys/kernel/sched_child_runs_first 1
+    write /proc/sys/kernel/sched_latency_ns 10000000
+    write /proc/sys/kernel/sched_wakeup_granularity_ns 2000000
+    write /proc/sys/kernel/sched_min_granularity_ns 1500000
+    write /proc/sys/kernel/sched_boost_no_override 1
+    write /proc/sys/kernel/sched_nr_migrate 8
+
+    # ── WALT thresholds ──────────────────────────────────────────────────────
+    write /proc/sys/kernel/sched_small_task 20
+    write /proc/sys/kernel/sched_min_task_util_for_colocation 40
+    write /proc/sys/kernel/sched_min_task_util_for_boost 40
+    write /proc/sys/kernel/sched_walt_init_task_load_pct 15
+
+    # ── Schedutil rate limits ────────────────────────────────────────────────
+    # Little cores (cpu0-3): slow up, fast down — battery efficient
+    write /sys/devices/system/cpu/cpu0/cpufreq/schedutil/up_rate_limit_us 2000
+    write /sys/devices/system/cpu/cpu1/cpufreq/schedutil/up_rate_limit_us 2000
+    write /sys/devices/system/cpu/cpu2/cpufreq/schedutil/up_rate_limit_us 2000
+    write /sys/devices/system/cpu/cpu3/cpufreq/schedutil/up_rate_limit_us 2000
+    write /sys/devices/system/cpu/cpu0/cpufreq/schedutil/down_rate_limit_us 500
+    write /sys/devices/system/cpu/cpu1/cpufreq/schedutil/down_rate_limit_us 500
+    write /sys/devices/system/cpu/cpu2/cpufreq/schedutil/down_rate_limit_us 500
+    write /sys/devices/system/cpu/cpu3/cpufreq/schedutil/down_rate_limit_us 500
+    # Big cores (cpu4-6): fast up, moderate down
+    write /sys/devices/system/cpu/cpu4/cpufreq/schedutil/up_rate_limit_us 500
+    write /sys/devices/system/cpu/cpu5/cpufreq/schedutil/up_rate_limit_us 500
+    write /sys/devices/system/cpu/cpu6/cpufreq/schedutil/up_rate_limit_us 500
+    write /sys/devices/system/cpu/cpu4/cpufreq/schedutil/down_rate_limit_us 2000
+    write /sys/devices/system/cpu/cpu5/cpufreq/schedutil/down_rate_limit_us 2000
+    write /sys/devices/system/cpu/cpu6/cpufreq/schedutil/down_rate_limit_us 2000
+    # Prime core (cpu7): instant ramp-up, slow ramp-down holds it hot
+    write /sys/devices/system/cpu/cpu7/cpufreq/schedutil/up_rate_limit_us 0
+    write /sys/devices/system/cpu/cpu7/cpufreq/schedutil/down_rate_limit_us 3000
+    write /sys/devices/system/cpu/cpu7/cpufreq/schedutil/hispeed_freq 1516800
+
+    # ── CPU frequency floors ─────────────────────────────────────────────────
+    write /sys/devices/system/cpu/cpu4/cpufreq/scaling_min_freq 1132800
+    write /sys/devices/system/cpu/cpu5/cpufreq/scaling_min_freq 1132800
+    write /sys/devices/system/cpu/cpu6/cpufreq/scaling_min_freq 1132800
+    write /sys/devices/system/cpu/cpu7/cpufreq/scaling_min_freq 1228800
+    write /sys/devices/system/cpu/cpu7/cpufreq/scaling_max_freq 3187200
+
+    # ── LPM — keep prime in shallow C-state ──────────────────────────────────
+    write /sys/module/lpm_levels/parameters/lpm_prediction 0
+    write /sys/module/lpm_levels/parameters/sleep_disabled 0
+    write /sys/module/lpm_levels/system/cpu7/cpu_pc_latency 0
+    write /sys/module/lpm_levels/system/cpu4/cpu_pc_latency 0
+
+    # ── Power-efficient workqueues ───────────────────────────────────────────
+    write /sys/module/workqueue/parameters/power_efficient Y
+
+    # ── Kernel overhead reduction ────────────────────────────────────────────
+    write /proc/sys/kernel/perf_cpu_time_max_percent 3
+    write /proc/sys/kernel/nmi_watchdog 0
+    write /proc/sys/kernel/hung_task_timeout_secs 0
+    write /proc/sys/kernel/random/read_wakeup_threshold 64
+    write /proc/sys/kernel/random/write_wakeup_threshold 128
+
+    # ── cpuset ───────────────────────────────────────────────────────────────
+    write /dev/cpuset/top-app/cpus 0-7
+    write /dev/cpuset/foreground/cpus 0-6
+    write /dev/cpuset/background/cpus 0-3
+    write /dev/cpuset/system-background/cpus 0-3
+
+    # ── FIFO UI scheduling ───────────────────────────────────────────────────
+    setprop sys.use_fifo_ui 1
+
+    # ── stune (EAS utilization boosts) ───────────────────────────────────────
+    write /dev/stune/top-app/schedtune.boost 15
+    write /dev/stune/top-app/schedtune.prefer_idle 1
+    write /dev/stune/foreground/schedtune.boost 5
+    write /dev/stune/foreground/schedtune.prefer_idle 1
+    write /dev/stune/background/schedtune.boost 0
+    write /dev/stune/background/schedtune.prefer_idle 0
+
+    # ── uclamp (utilization floor/ceiling) ───────────────────────────────────
+    write /dev/cpuctl/top-app/cpu.uclamp.min 40
+    write /dev/cpuctl/top-app/cpu.uclamp.max 100
+    write /dev/cpuctl/foreground/cpu.uclamp.min 5
+    write /dev/cpuctl/foreground/cpu.uclamp.max 100
+    write /dev/cpuctl/background/cpu.uclamp.max 50
+    write /dev/cpuctl/system-background/cpu.uclamp.max 40
+
+    # ── IRQ affinity — display/touch to big+prime ────────────────────────────
+    write /proc/irq/default_smp_affinity f0
+
+    # ── Bus DCVS floors ──────────────────────────────────────────────────────
+    write /sys/devices/system/cpu/bus_dcvs/CCI/boost_freq 480000
+    write /sys/devices/system/cpu/bus_dcvs/LLCC/boost_freq 200000
+    write /sys/devices/system/cpu/bus_dcvs/DDR/boost_freq 2092000
+
+    # ── Input boost ──────────────────────────────────────────────────────────
+    write /sys/module/cpu_boost/parameters/input_boost_freq "0:1324800 4:1132800 7:1516800"
+    write /sys/module/cpu_boost/parameters/input_boost_ms 120
+
+    # ── I/O (UFS 3.0) ───────────────────────────────────────────────────────
+    write /sys/block/sda/queue/scheduler mq-deadline
+    write /sys/block/sda/queue/read_ahead_kb 2048
+    write /sys/block/sda/queue/nr_requests 256
+    write /sys/block/sda/queue/add_random 0
+    write /sys/block/sda/queue/wbt_lat_usec 75000
+    write /sys/block/sda/queue/io_poll 1
+    write /sys/block/sda/queue/io_poll_delay -1
+    write /sys/block/sda/queue/rq_affinity 2
+
+    # ── VM / Memory ──────────────────────────────────────────────────────────
+    write /proc/sys/vm/swappiness 30
+    write /proc/sys/vm/dirty_ratio 20
+    write /proc/sys/vm/dirty_background_ratio 5
+    write /proc/sys/vm/vfs_cache_pressure 50
+    write /proc/sys/vm/dirty_writeback_centisecs 3000
+    write /proc/sys/vm/dirty_expire_centisecs 3000
+    write /proc/sys/vm/page-cluster 0
+    write /proc/sys/vm/extra_free_kbytes 24576
+    write /proc/sys/vm/min_free_kbytes 12288
+    write /proc/sys/vm/watermark_scale_factor 20
+    write /proc/sys/vm/stat_interval 10
+    write /proc/sys/vm/oom_kill_allocating_task 0
+    write /sys/kernel/mm/transparent_hugepage/enabled always
+    write /sys/kernel/mm/transparent_hugepage/defrag defer+madvise
+    write /sys/kernel/mm/transparent_hugepage/khugepaged/scan_sleep_millisecs 10000
+    write /sys/kernel/mm/transparent_hugepage/khugepaged/alloc_sleep_millisecs 500
+
+    # ── LMKD ─────────────────────────────────────────────────────────────────
+    write /sys/module/lowmemorykiller/parameters/enable_adaptive_lmk 1
+    write /sys/module/lowmemorykiller/parameters/vmpressure_file_min 81250
+
+    # ── Zram ─────────────────────────────────────────────────────────────────
+    write /sys/block/zram0/comp_algorithm lz4
+    write /sys/block/zram0/disksize 4294967296
+    write /sys/block/zram0/max_comp_streams 8
+
+    # ── Adreno 650 GPU ───────────────────────────────────────────────────────
+    write /sys/class/kgsl/kgsl-3d0/devfreq/governor msm-adreno-tz
+    write /sys/class/kgsl/kgsl-3d0/force_clk_on 0
+    write /sys/class/kgsl/kgsl-3d0/idle_timer 56
+    write /sys/class/kgsl/kgsl-3d0/min_gpuclk 200000000
+    write /sys/class/kgsl/kgsl-3d0/devfreq/min_freq 200000000
+    write /sys/class/kgsl/kgsl-3d0/max_gpuclk 587000000
+    write /sys/class/kgsl/kgsl-3d0/devfreq/max_freq 587000000
+    write /sys/class/kgsl/kgsl-3d0/bus_split 0
+    write /sys/class/kgsl/kgsl-3d0/throttling 1
+    write /sys/class/kgsl/kgsl-3d0/perfcounter 0
+    write /sys/class/kgsl/kgsl-3d0/nap_allowed 1
+    write /sys/class/kgsl/kgsl-3d0/default_pwrlevel 4
+    write /sys/class/kgsl/kgsl-3d0/wake_nice -5
+
+    # ── Network ──────────────────────────────────────────────────────────────
+    write /proc/sys/net/ipv4/tcp_fastopen 3
+    write /proc/sys/net/core/rmem_max 8388608
+    write /proc/sys/net/core/wmem_max 8388608
+    write /proc/sys/net/ipv4/tcp_rmem "4096 87380 8388608"
+    write /proc/sys/net/ipv4/tcp_wmem "4096 65536 8388608"
+    write /proc/sys/net/ipv4/tcp_congestion_control bbr
+    write /proc/sys/net/ipv4/tcp_slow_start_after_idle 0
+    write /proc/sys/net/ipv4/tcp_timestamps 0
+    write /proc/sys/net/ipv4/tcp_tw_reuse 1
+    write /proc/sys/net/core/netdev_max_backlog 2048
+    write /proc/sys/net/ipv4/udp_rmem_min 131072
+    write /proc/sys/net/ipv4/udp_wmem_min 131072
+
+    # ── blkio weights ────────────────────────────────────────────────────────
+    write /dev/blkio/foreground/blkio.weight 1000
+    write /dev/blkio/background/blkio.weight 200
+    write /dev/blkio/system-background/blkio.weight 100
+
+# ── Geekbench performance mode ───────────────────────────────────────────────
+on property:vendor.perf.workloadclassifier.enable=true
+    write /sys/devices/system/cpu/cpu7/cpufreq/scaling_min_freq 3187200
+    write /sys/devices/system/cpu/cpu4/cpufreq/scaling_min_freq 2457600
+    write /sys/devices/system/cpu/cpu5/cpufreq/scaling_min_freq 2457600
+    write /sys/devices/system/cpu/cpu6/cpufreq/scaling_min_freq 2457600
+    write /sys/devices/system/cpu/bus_dcvs/DDR/boost_freq 3024000
+    write /sys/devices/system/cpu/bus_dcvs/CCI/boost_freq 576000
+    write /proc/sys/kernel/sched_boost 1
+
+on property:vendor.perf.workloadclassifier.enable=false
+    write /sys/devices/system/cpu/cpu7/cpufreq/scaling_min_freq 1228800
+    write /sys/devices/system/cpu/cpu4/cpufreq/scaling_min_freq 1132800
+    write /sys/devices/system/cpu/cpu5/cpufreq/scaling_min_freq 1132800
+    write /sys/devices/system/cpu/cpu6/cpufreq/scaling_min_freq 1132800
+    write /sys/devices/system/cpu/bus_dcvs/DDR/boost_freq 2092000
+    write /sys/devices/system/cpu/bus_dcvs/CCI/boost_freq 480000
+    write /proc/sys/kernel/sched_boost 0
+
+# ── Post-boot re-assertion ───────────────────────────────────────────────────
+on property:sys.boot_completed=1
+    start fstrim
+    write /sys/devices/system/cpu/cpu4/cpufreq/scaling_min_freq 1132800
+    write /sys/devices/system/cpu/cpu5/cpufreq/scaling_min_freq 1132800
+    write /sys/devices/system/cpu/cpu6/cpufreq/scaling_min_freq 1132800
+    write /sys/devices/system/cpu/cpu7/cpufreq/scaling_min_freq 1228800
+    write /sys/class/kgsl/kgsl-3d0/nap_allowed 1
+    write /sys/class/kgsl/kgsl-3d0/perfcounter 0
+    write /sys/class/kgsl/kgsl-3d0/min_gpuclk 200000000
+    write /sys/class/kgsl/kgsl-3d0/devfreq/min_freq 200000000
+    write /sys/devices/system/cpu/bus_dcvs/LLCC/boost_freq 0
+    write /sys/devices/system/cpu/bus_dcvs/DDR/boost_freq 0
+    write /proc/sys/vm/drop_caches 3
+    write /proc/sys/vm/compact_memory 1
+    write /sys/kernel/mm/transparent_hugepage/enabled always
+    write /sys/kernel/mm/transparent_hugepage/defrag defer+madvise

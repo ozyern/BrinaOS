@@ -1,0 +1,24 @@
+# QWRpdHlhIHdhcyBoZXJlISwgaSBsb3ZlIFNhYnJpbmEgQ2FycGVudGVy
+ro.revork=aWxvdmVzYWJyaW5hY2FycGVudGVy
+dalvik.vm.image-dex2oat-threads=8
+dalvik.vm.image-dex2oat-filter=speed
+persist.sys.minfree_def=73728,92160,110592,154832,482560,579072
+persist.sys.minfree_6g=73728,92160,110592,258048,663552,903168
+persist.sys.minfree_8g=73728,92160,110592,387072,1105920,1451520
+# Spoof bootloader 
+ro.secureboot.lockstate=locked
+ro.boot.flash.locked=1
+ro.boot.realme.lockstate=1
+ro.boot.vbmeta.device_state=locked
+ro.boot.verifiedbootstate=green
+ro.boot.veritymode=enforcing
+ro.boot.selinux=enforcing
+ro.boot.warranty_bit=0
+ro.build.tags=release-keys
+ro.build.type=user
+ro.debuggable=0
+ro.is_ever_orange=0
+ro.secure=1
+ro.vendor.boot.warranty_bit=0
+ro.vendor.warranty_bit=0
+ro.warranty_bit=0
