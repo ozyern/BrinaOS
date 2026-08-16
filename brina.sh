@@ -39,8 +39,6 @@ banner
 
 check unzip aria2c 7z zip java python3 zstd bc xmlstarlet
 
-blue "Initialising submodules"
-git submodule update --init
 
 # Can be changed in bin/port_config
 port_partition=$(grep "partition_to_port" bin/port_config |cut -d '=' -f 2)
