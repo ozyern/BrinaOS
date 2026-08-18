@@ -409,9 +409,9 @@ green "SDK Version: BASEROM: [SDK ${base_android_sdk}], PORTROM: [SDK ${port_and
 # ROM version
 base_rom_version=$(<  build/baserom/images/my_manifest/build.prop grep "ro.build.display.ota" | awk 'NR==1' | cut -d '=' -f 2 | cut -d "_" -f 2-)
 port_rom_version=$(<  build/portrom/images/my_manifest/build.prop grep "ro.build.display.ota" | awk 'NR==1' | cut -d '=' -f 2 | cut -d "_" -f 2-)
-green "ROM 版本: 底包为 [${base_rom_version}], 移植包为 [${port_rom_version}]" "ROM Version: BASEROM: [${base_rom_version}], PORTROM: [${port_rom_version}] "
+green "ROM Version: BASEROM: [${base_rom_version}], PORTROM: [${port_rom_version}]"
 
-#ColorOS版本号获取
+# ColorOS version code
 
 base_device_code=$(< build/baserom/images/my_manifest/build.prop grep "ro.oplus.version.my_manifest" | awk 'NR==1' | cut -d '=' -f 2 | cut -d "_" -f 1)
 port_device_code=$(< build/portrom/images/my_manifest/build.prop grep "ro.oplus.version.my_manifest" | awk 'NR==1' | cut -d '=' -f 2 | cut -d "_" -f 1)
@@ -729,7 +729,7 @@ KEYS="\.name= \.model= \.manufacturer= \.device= \.brand= \.my_product.type="
 for k in $KEYS; do
     grep "$k" "$BASE_PROP" | while IFS='=' read -r key value; do
         if [[ "$key" == "ro.product.vendor.brand" ]]; then
-            # 特殊处理：强制写 OPPO
+            # Special case: always write OPPO
             sed -i "s|^$key=.*|$key=OPPO|" "$PORT_PROP" 
         elif grep -q "^$key=" "$PORT_PROP"; then
             sed -i "s|^$key=.*|$key=$value|" "$PORT_PROP"
@@ -1064,7 +1064,7 @@ if [[ $ota_patched == "false" ]];then
     # Remove OTA dm-verity
     targetOTA=$(find build/portrom/images/ -name "OTA.apk")
     if [[ -f build/${app_patch_folder}/patched/OTA.apk ]]; then
-        blue "复制已经处理过的OTA.apk"
+        blue "Reusing the already patched OTA.apk"
         cp -rfv build/${app_patch_folder}/patched/OTA.apk $targetOTA
     
     elif [[ -f $targetOTA ]];then
@@ -1105,11 +1105,11 @@ fi
 
         unit_config_list=$(find tmp/AIUnit -type f -name "unit_config_list.json")
         jq --arg models_str "${EXTENDED_MODELS[*]}" '
-    # 定义数组变量
+    # Define the array variable
     ($models_str | split(" ")) as $new_models
     |
 
-    # 开始对输入 JSON 数组执行 map
+    # Map over the input JSON array
     map(
         if has("whiteModels") and (.whiteModels | type) == "string" then
         .whiteModels as $current |
@@ -1187,7 +1187,7 @@ targetSettings=$(find build/portrom/images/ -name "Settings.apk")
 
 if [[ $port_android_version -ge 16 ]];then
     if [[ -f $targetSettings ]];then
-        blue "Patching Settings"
+        blue "Adding credits to ROM version (shoutout to tg/tenseimods!)"
         cp -rf $targetSettings tmp/$(basename $targetSettings).bak
         java -jar bin/apktool/APKEditor.jar d -f -i $targetSettings -o tmp/Settings $extra_args
         targetSmali=$(find tmp -type f -name "AboutDeviceOtaUpdatePreference.smali")
@@ -1759,13 +1759,22 @@ oplus_features=(
     "oplus.software.radio.ai_link_boost"
     "oplus.software.radio.ai_link_boost_notification"
     "oplus.software.radio.ai_link_boost_railway_notification"
-    "oplus.software.systemui.pin_task^Pin to Fluid Cloud"
+    # "oplus.software.systemui.pin_task^Pin to Fluid Cloud"
+    #   Do NOT re-enable on this donor. This flag only makes OplusLauncher show the
+    #   "Pin to Live Alerts" menu entry; the pin itself is a ContentProvider call to
+    #   content://com.oplus.card.server.systemui.provider/ with method oplus_pin_task,
+    #   and nothing in the CPH2841 firmware implements that method — the literal exists
+    #   only inside OplusLauncher.apk (the caller) across every partition. SystemUI's
+    #   seeding plugin returns a bundle with no resultCode, Launcher logs
+    #   "callCapsuleApi oplus_pin_task failed, result err. 0", and the app is left
+    #   stranded as a floating mini window. Stock CPH2841 never declares this feature.
+    #   Live Alerts themselves are unaffected — they run off support_fluid_entry.
     "oplus.software.radio.hfp_comm_shared_support^iPhone Connection"
     "oplus.hardware.display.motion_sickness^Motion Sickness Relief"
 )
 
-for oplus_feature in ${oplus_features[@]}; do 
-    add_feature_v2 oplus_feature $oplus_feature
+for oplus_feature in "${oplus_features[@]}"; do
+    add_feature_v2 oplus_feature "$oplus_feature"
 done
 
 if [[ $vndk_version -gt 33 ]];then
@@ -1830,6 +1839,11 @@ app_features=(
     "com.android.launcher.app_advice_autoadd^^args=\"boolean:true\""
     "com.android.launcher.INDICATOR_BREENO_ENTRY_ENABLE^Breeno Indicator^args=\"boolean:true\""
     #ColorOS 16 new added
+    # Live Alerts capsule feature. Read via AppFeatureProviderUtils->isFeatureSupport;
+    # it is what Clock's TimerSeedlingHelper.j() logs as isCapsuleFeature, alongside
+    # oplus.software.support_fluid_entry (isSeedlingFeature). Unrelated to app pinning —
+    # see the oplus.software.systemui.pin_task note in oplus_features above.
+    "com.oplus.software.support.mini_capsule^Live Alerts capsule^args=\"boolean:true\""
     "com.oplus.systemui.panoramic_aod.enable^AOD^args=\"boolean:true\""
     "oplus.software.disable_aod_all_day_mode^^args=\"boolean:false\""
     "com.oplus.systemui.panoramic_aod_all_day_default_open.enable^^args=\"boolean:true\""
@@ -1847,8 +1861,8 @@ app_features=(
     "os.graphic.gallery.collage.asset_bounds_break^Out of bounds^args=\"boolean:true\""
     "os.graphic.gallery.collage.livephoto^^args=\"boolean:true\""
 )
-for app_feature in ${app_features[@]}; do 
-    add_feature_v2 app_feature $app_feature
+for app_feature in "${app_features[@]}"; do
+    add_feature_v2 app_feature "$app_feature"
 done
 add_feature_v2 permission_oplus_feature "oplus.software.game.cold.start.speedup.enable"
 add_feature_v2 permission_feature "com.plus.press_power_botton_experiment"
@@ -1917,8 +1931,8 @@ if [[ -d devices/common/GTMode/overlay ]] && [[ $port_android_version != "16" ]]
 fi
 
 if [[ $port_vendor_brand == "realme" ]] && [[ $regionmark == "CN" ]] ;then
-    add_feature_v2 oplus_feature "oplus.software.support.gt.mode^GT模式" 
-    add_feature_v2 app_feature "com.android.settings.device_rm^Realme设备，显示GT模式需要"
+    add_feature_v2 oplus_feature "oplus.software.support.gt.mode^GT mode"
+    add_feature_v2 app_feature "com.android.settings.device_rm^Realme device, required to show GT mode"
     add_feature_v2 app_feature "com.oplus.smartsidebar.space.roulette.support^AI Portal" \
             "com.oplus.smartsidebar.space.roulette.bootreg" \ 
             "com.coloros.support_gt_boost^^args=\"boolean:true\""
@@ -2051,7 +2065,7 @@ fi
 
 if [[ ${base_product_device} == "OnePlus8T" ]];then 
     # Voice_trigger for OnePlus 8T
-    add_feature_v2 oplus_feature "oplus.software.audio.voice_wakeup_support^旧版语音唤醒" "oplus.software.audio.voice_wakeup_3words_support"
+    add_feature_v2 oplus_feature "oplus.software.audio.voice_wakeup_support^Legacy voice wakeup" "oplus.software.audio.voice_wakeup_3words_support"
     #add_feature "oplus.software.speechassist.oneshot.support" build/portrom/images/my_product/etc/extension/com.oplus.oplus-feature.xml
     unzip -o ${work_dir}/devices/common/voice_trigger_fix.zip -d ${work_dir}/build/portrom/images/
 fi
@@ -2242,6 +2256,10 @@ if  [[ "${base_product_device}" == "OnePlus9Pro" ]] ||[[ "${base_product_device}
     echo -e "\n[FeatureTorch]\n    isSupportTorchStrengthLevel = TRUE\n    maxStrengthLevel = 4\n    defaultStrengthLevel = 4\n " >> build/portrom/images/odm/etc/camera/CameraHWConfiguration.config
 fi
 
+# Camera glass UI for the 9 Pro is patched further down, AFTER the modules loop —
+# see "Camera glass UI" near the Feather Engine call. It has to run there because
+# the Camera-*-fixes-ODM module blanket-copies its own odm/ tree over the build.
+
 if [[ ${port_android_version} == 16 ]] && [[ ${base_android_version} -lt 15 ]];then
     rm -rf build/portrom/images/system_ext/priv-app/com.qualcomm.location
     #remove_feature "oplus.software.display.dcbacklight_support" force
@@ -2297,7 +2315,11 @@ if [[ -f "devices/${base_product_device}/odm_selinux_fix_a16.zip" ]] && [[ $port
     unzip -o devices/${base_product_device}/odm_selinux_fix_a16.zip -d ${work_dir}/build/portrom/images/
 fi
 
-# Modules
+sparkle "💄  module dress-up"
+
+# Modules. A descriptor that declares module_local_zip is applied from its own
+# devices/<device>/ folder and never downloaded — see add_module in caffeine.sh.
+# The OnePlus 9 camera fixes (ODM + ColorOS Global) work that way.
 for module in devices/${base_product_device}/modules/*.sh; do
     add_module $module
 done
@@ -2321,6 +2343,34 @@ if [[ $portIsRealmeUI == true ]]; then
     for module in devices/${base_product_device}/modules/rui/*.sh; do
         add_module $module
     done
+fi
+
+# Camera glass UI — OnePlus 9 Pro only (the only device here on the 6.0xx camera).
+# The ColorOS 16 camera picks between its redesigned translucent layout and the
+# legacy opaque one from com.oplus.camera.integration.ui.support, read out of the
+# ODM vendor-tag config via CameraUnit's FeatureApi. The 9 Pro's ODM is the stock
+# 2022 one and ships that tag as 0, so the camera silently falls back to the old UI.
+#
+# MUST stay after the modules loop: Camera-5.0-fixes-ODM's script.sh does
+# `cp -rf $module_files/* build/portrom/images/` and its payload includes its own
+# odm/etc/camera/config/oplus_camera_config with the tag back at 0, so patching
+# this any earlier (e.g. next to the torch fix) gets silently reverted.
+#
+# NOTE: only values of tags ALREADY in this file can be changed. Tag names that are
+# absent are not registered in the HAL's vendor tag descriptor, so adding entries
+# here does nothing — verified the hard way against zoom/none-SAT tags.
+if [[ "${base_product_device}" == "OnePlus9Pro" ]];then
+    camera_vendor_config="build/portrom/images/odm/etc/camera/config/oplus_camera_config"
+    if [[ -f "${camera_vendor_config}" ]];then
+        if grep -q "com.oplus.camera.integration.ui.support" "${camera_vendor_config}";then
+            sed -i '/com.oplus.camera.integration.ui.support/,+3 s/"Value": "0"/"Value": "1"/' "${camera_vendor_config}"
+            blue "Camera: ColorOS 16 glass UI enabled (integration.ui.support=1)"
+        else
+            yellow "Camera: integration.ui.support absent, skipping glass UI patch"
+        fi
+    else
+        yellow "Camera: odm vendor-tag config not found, skipping glass UI patch"
+    fi
 fi
 
 # ── Feather Engine: smoothness & performance tuning (SM8250 / SM8350) ────────
@@ -2704,7 +2754,7 @@ if [[ $pack_method == "stock" ]];then
     blue "Packing complete: out/$target_folder/ota_full-${rom_version}-${port_product_model}-${pack_timestamp}-$regionmark-${portrom_version_security_patch}-${ziphash}.zip"
 else
    if [[ $is_ab_device == true ]]; then
-        # 打包 super.img
+        # Pack super.img
         blue "Packing super.img for V-AB device"
         lpargs="-F --virtual-ab --output build/portrom/images/super.img --metadata-size 65536 --super-name super --metadata-slots 3 --device super:$superSize --group=qti_dynamic_partitions_a:$superSize --group=qti_dynamic_partitions_b:$superSize"
 
