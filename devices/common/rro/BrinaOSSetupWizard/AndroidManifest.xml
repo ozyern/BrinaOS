@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Static RRO: BrinaOS branding for the ColorOS setup wizard.
+
+     complete_page_logo is the Lottie the last page animates before the Get
+     started button - stock strokes on the word "ColorOS" - and ic_bg_guide_page
+     is the background behind the "Hello" welcome screen. Both belong to
+     com.coloros.bootreg, which runs once on first boot and after a wipe. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="os.brina.overlay.bootreg.brandname">
+    <overlay
+        android:targetPackage="com.coloros.bootreg"
+        android:isStatic="true"
+        android:priority="9000" />
+    <application android:hasCode="false" />
+</manifest>

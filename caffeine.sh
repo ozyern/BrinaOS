@@ -1023,6 +1023,16 @@ trap 'error "Script interrupted! Exiting to prevent accidental deletion." ; exit
 
 
 add_module() {
+    # NOTE: the two `continue`s below do NOT work. bash only honours `continue`
+    # inside a loop that is lexically part of the same function body, so it
+    # prints "continue: only meaningful in a `for', `while', or `until' loop"
+    # and falls through — every module runs regardless of
+    # module_required_android_version / module_requires_experimental. Left as-is
+    # on purpose: turning them into `return` would newly skip modules that
+    # currently do run (Camera-5.0-fixes-ODM on Android 16 ports, for one), so
+    # any module that really needs a version gate checks $port_android_version
+    # inside its own script.sh instead.
+    unset module_required_android_version module_requires_experimental
     source $1
     if [[ $port_android_version -ge $module_required_android_version ]]; then
         continue
@@ -1031,12 +1041,104 @@ add_module() {
         continue
     fi
     blue "Module: ${module_display_name}"
+
+    # Local payload wins over the GitHub one: a module whose files live in
+    # devices/<device>/module_files/<module_name>/ is applied straight from the
+    # repo, no download. Same contract as the remote form — script.sh is sourced
+    # with $module_files pointing at the unpacked tree.
+    module_local_dir="devices/${base_product_device}/module_files/${module_name}"
+    if [[ -d "${module_local_dir}" ]] && [[ -f "${module_local_dir}/script.sh" ]]; then
+        blue "  local payload: ${module_local_dir}"
+        module_files="${module_local_dir}/files"
+        source "${module_local_dir}/script.sh"
+        unset module_local_dir
+        return 0
+    fi
+    unset module_local_dir
+
     mkdir -p cache/${module_name}
     curl -L ${module_repo}/raw/refs/heads/${module_repo_branch}/${module_name}/files.zip -o cache/${module_name}/files.zip
     curl -L ${module_repo}/raw/refs/heads/${module_repo_branch}/${module_name}/script.sh -o cache/${module_name}/script.sh
     module_files=cache/${module_name}/files
     unzip -o cache/${module_name}/files.zip -d ${module_files}
     source cache/${module_name}/script.sh
+}
+
+# Compiles a static RRO out of devices/common/rro/<name> (AndroidManifest.xml plus
+# a res/ tree) and installs the signed APK into the port's product/overlay.
+#
+# An overlay rather than an edit to the target APK: Settings is signed with OPPO's
+# release key, so swapping a drawable inside Settings.apk breaks that signature and
+# the package stops parsing at scan time. An RRO sitting in a system partition is
+# trusted by location, which is why the throwaway testkey in otatools/ is signature
+# enough for it.
+#
+# No new host dependency - aapt2, apksigner and the key all ship in otatools/, and
+# -I resolves the android: attributes against the port's own framework-res.apk.
+build_static_rro() {
+    local name="$1"
+    local src="devices/common/rro/${name}"
+    local dest="build/portrom/images/product/overlay"
+    local fw="build/portrom/images/system/system/framework/framework-res.apk"
+    local work="tmp/rro/${name}"
+
+    if [[ ! -f "${src}/AndroidManifest.xml" ]];then
+        yellow "RRO: ${src} has no AndroidManifest.xml, skipping ${name}"
+        return 1
+    fi
+    if [[ ! -f "${fw}" ]];then
+        yellow "RRO: framework-res.apk not found, skipping ${name}"
+        return 1
+    fi
+
+    rm -rf "${work}" "${dest}/${name}.apk"
+    mkdir -p "${work}" "${dest}"
+    otatools/bin/aapt2 compile --dir "${src}/res" -o "${work}/res.zip"         && otatools/bin/aapt2 link -I "${fw}"                 --manifest "${src}/AndroidManifest.xml"                 --min-sdk-version 30 --target-sdk-version 35                 --version-code 1 --version-name 1.0                 -o "${work}/unsigned.apk" "${work}/res.zip"         && otatools/bin/apksigner sign                 --key otatools/key/testkey.pk8                 --cert otatools/key/testkey.x509.pem                 --v4-signing-enabled false                 --out "${dest}/${name}.apk" "${work}/unsigned.apk"
+    local rc=$?
+    rm -rf "${work}"
+    if [[ $rc -ne 0 ]] || [[ ! -s "${dest}/${name}.apk" ]];then
+        # Not fatal: a port without the overlay is just a port with stock artwork.
+        rm -f "${dest}/${name}.apk"
+        error "RRO: could not build ${name}, keeping the stock resources"
+        return 1
+    fi
+    blue "RRO: installed ${dest}/${name}.apk"
+    return 0
+}
+
+# Drops a set of ready-built overlay APKs from devices/common/rro/prebuilt/<name>
+# into the port's product/overlay.
+#
+# Third-party theme packs ship as Magisk modules that mount their overlays over
+# /system/vendor/overlay. Nothing about a static RRO needs Magisk though - it is
+# trusted by whichever system partition it sits on - so a module that is only
+# overlay APKs can be baked straight into the ROM instead. Anything else the
+# module carries (system.prop, service.sh) is deliberately not brought along;
+# see the README next to the APKs for what was dropped and why.
+install_prebuilt_rro() {
+    local name="$1"
+    local src="devices/common/rro/prebuilt/${name}"
+    local dest="build/portrom/images/product/overlay"
+    local count=0
+
+    if [[ ! -d "${src}" ]];then
+        yellow "RRO: ${src} not found, skipping ${name}"
+        return 1
+    fi
+
+    mkdir -p "${dest}"
+    for apk in "${src}"/*.apk;do
+        [[ -f "${apk}" ]] || continue
+        cp -f "${apk}" "${dest}/" && count=$((count + 1))
+    done
+
+    if [[ ${count} -eq 0 ]];then
+        # Not fatal, same as build_static_rro: a port without the theme still boots.
+        error "RRO: ${name} had no APKs to install"
+        return 1
+    fi
+    blue "RRO: installed ${count} prebuilt overlay(s) from ${name}"
+    return 0
 }
 
 resolveDownloadCheck() {

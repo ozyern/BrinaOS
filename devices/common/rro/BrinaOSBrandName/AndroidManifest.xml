@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Static RRO: replaces the ColorOS logotype on the About device page with the
+     BrinaOS one. ColorOS keeps the OS name as a vector drawable, not a string,
+     so this is a drawable override rather than a string override. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="os.brina.overlay.settings.brandname">
+    <overlay
+        android:targetPackage="com.android.settings"
+        android:isStatic="true"
+        android:priority="9000" />
+    <application android:hasCode="false" />
+</manifest>

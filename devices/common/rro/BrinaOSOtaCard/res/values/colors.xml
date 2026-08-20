@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Settings tints the device name and the version number on the OTA card
+         with this one colour. Stock is #FFDDEB, a pale pink picked to sit on the
+         stock artwork; on a photo it reads as washed out and off-palette, so the
+         whole card goes white: the logotype, "Version up to date" and the update
+         button already use white. -->
+    <color name="about_phone_name_version_color">#FFFFFFFF</color>
+</resources>

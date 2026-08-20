@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Static RRO: renames OPPO AI to BrinaAI. The Settings row and the page it
+     opens are both owned by com.oplus.pantanal.ums, not by Settings - Settings
+     has no "OPPO AI" string anywhere - so this targets UMS. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="os.brina.overlay.ums.brandname">
+    <overlay
+        android:targetPackage="com.oplus.pantanal.ums"
+        android:isStatic="true"
+        android:priority="9000" />
+    <application android:hasCode="false" />
+</manifest>

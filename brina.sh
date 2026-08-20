@@ -867,27 +867,42 @@ else
         echo "⚠️ 0001-core-framework-Introduce-OplusPropsHookUtils-V6.patch does not exist, skipping patch application"
     fi
 fi
-# Kaorios Toolbox
-if [[ ${portIsOOS} == true ]];then
-    blue "Implement Kaorios Toolbox"
-    git clone https://github.com/Wuang26/Kaorios-Toolbox.git tmp/kaorios
-    wget -O tmp/KaoriosToolbox.apk https://github.com/Wuang26/Kaorios-Toolbox/releases/download/V1.0.9/KaoriosToolbox-V1.0.9.apk
-    wget -O tmp/privapp_whitelist_com.kousei.kaorios.xml https://github.com/Wuang26/Kaorios-Toolbox/releases/download/V1.0.9/com.kousei.kaorios.xml
-    cp -rf build/portrom/images/system/system/framework/framework.jar tmp/kaorios/Toolbox-patcher/framework.jar
-    pushd tmp/kaorios/Toolbox-patcher/
-    chmod +x scripts/patcher.sh
-    ./scripts/patcher.sh framework.jar
-    popd
-    cp -rf tmp/kaorios/Toolbox-patcher/framework_patched.jar build/portrom/images/system/system/framework/framework.jar
-    mkdir build/portrom/images/system_ext/priv-app/KaoriosToolbox
-    cp -rf tmp/KaoriosToolbox.apk build/portrom/images/system_ext/priv-app/KaoriosToolbox/
-    cp -rf tmp/privapp_whitelist_com.kousei.kaorios.xml build/portrom/images/system_ext/etc/permissions/
-    chmod 755 build/portrom/images/system_ext/priv-app/KaoriosToolbox
-    chmod 644 build/portrom/images/system_ext/etc/permissions/privapp_whitelist_com.kousei.kaorios.xml
-    chmod 644 build/portrom/images/system_ext/priv-app/KaoriosToolbox/KaoriosToolbox.apk
-    echo "# Kaorios Toolbox required props" >> build/portrom/images/system/system/build.prop
-    echo "persist.sys.kaorios=kousei" >> build/portrom/images/system/system/build.prop
-    echo "ro.control_privapp_permissions=" >> build/portrom/images/system/system/build.prop
+# Kaorios Toolbox. Vendored under devices/common/prebuilt/KaoriosToolbox (V2.0.4)
+# rather than fetched at build time: the old block pulled V1.0.9 and ran its
+# Toolbox-patcher/scripts/patcher.sh, a host script the project deleted when it
+# moved framework patching into the on-device KaoriosPatcher app. It was also
+# gated to OOS only, so it never ran on a ColorOS port.
+#
+# The framework attestation hook is left to the app's own on-device patcher: it
+# finds the injection points live and re-dexopts locally, so there is no stale
+# boot image and no permanent perf/battery cost. This block just makes the app,
+# its permissions and its enablement props present on first boot; the hook dex is
+# staged beside the app for the patcher to pick up.
+if [[ ${portIsOOS} == true || ${portIsColorOSGlobal} == true ]];then
+    KAORIOS_SRC=devices/common/prebuilt/KaoriosToolbox
+    if [[ -d ${KAORIOS_SRC} ]];then
+        blue "Implement Kaorios Toolbox ($(cut -d= -f2 ${KAORIOS_SRC}/VERSION | head -n1))"
+        KAORIOS_APPDIR=build/portrom/images/system_ext/priv-app/KaoriosToolbox
+        mkdir -p ${KAORIOS_APPDIR}/lib
+        cp -f ${KAORIOS_SRC}/app/KaoriosToolbox.apk ${KAORIOS_APPDIR}/
+        cp -rf ${KAORIOS_SRC}/app/lib/* ${KAORIOS_APPDIR}/lib/
+        cp -f ${KAORIOS_SRC}/kaorios_hook.dex ${KAORIOS_APPDIR}/kaorios_hook.dex
+        cp -f ${KAORIOS_SRC}/privapp_whitelist_com.kousei.kaorios.xml \
+              build/portrom/images/system_ext/etc/permissions/
+        find ${KAORIOS_APPDIR} -type d -exec chmod 755 {} \;
+        find ${KAORIOS_APPDIR} -type f -exec chmod 644 {} \;
+        chmod 644 build/portrom/images/system_ext/etc/permissions/privapp_whitelist_com.kousei.kaorios.xml
+
+        # persist.sys.kaorios enables the app; ro.control_privapp_permissions=
+        # (empty) stops a strict priv-app permission check from killing it on
+        # first boot. Neither is a spoof - the app owns its own spoofing.
+        add_prop_v2 "persist.sys.kaorios" "kousei"
+        if ! grep -q "^ro.control_privapp_permissions=" build/portrom/images/system/system/build.prop;then
+            echo "ro.control_privapp_permissions=" >> build/portrom/images/system/system/build.prop
+        fi
+    else
+        yellow "Kaorios Toolbox: ${KAORIOS_SRC} not found, skipping"
+    fi
 fi
 
 targetOplusService=$(find build/portrom/images/ -name "oplus-services.jar")
@@ -1674,6 +1689,13 @@ fi
 
 add_prop_v2 "ro.oplus.game.camera.support_1_0" "true"
 add_prop_v2 "ro.oplus.audio.quiet_start" "true"
+
+# The blur behind the ColorOS 16 camera panels. The camera asks for it per
+# window, and without this the request is refused and the panels come out flat
+# opaque instead of frosted. No port the toolkit builds carries the prop, so it
+# goes in unconditionally rather than beside the 9-series glass UI patch further
+# down - every 865/870/888 target can do the blur, they just are not asked to.
+add_prop_v2 "oplus.camera.cross.window.blur.support" "true"
 if [[ $portIsOOS == "true" ]];then
     remove_prop_v2 "ro.oplus.camera.quickshare.support" force
 fi
@@ -2098,7 +2120,25 @@ elif [[ $baseIsColorOSCN == "true" && ( $portIsColorOSGlobal == "true" || $portI
     rm -rf build/portrom/images/my_product/media/bootanimation
     cp -rf build/baserom/images/my_product/media/bootanimation build/portrom/images/my_product/media/
 fi
- 
+
+# BrinaOS boot animation. Replaces every copy in the tree rather than just the
+# top one: the carrier subdirectories carry their own, so an ATT_MX or Telcel SIM
+# would otherwise still boot OPPO. Regenerate the zips with
+# devices/common/tools/mkboot.sh.
+bootanim_dir=build/portrom/images/my_product/media/bootanimation
+if [[ -f devices/common/bootanimation.zip && -d $bootanim_dir ]]; then
+    replaced=0
+    while read -r zip; do
+        case "$(basename "$zip")" in
+            rbootanimation.zip) cp -f devices/common/rbootanimation.zip "$zip" ;;
+            bootanimation.zip)  cp -f devices/common/bootanimation.zip  "$zip" ;;
+        esac
+        chmod 644 "$zip"
+        replaced=$((replaced + 1))
+    done < <(find "$bootanim_dir" -name "*bootanimation.zip")
+    blue "BrinaOS boot animation installed (${replaced} copies)"
+fi
+
 rm -rf build/portrom/images/my_product/media/quickboot
 cp -rf build/baserom/images/my_product/media/quickboot build/portrom/images/my_product/media/
 if [[ -f devices/common/wallpaper.zip ]] && [[ "$portIsColorOSGlobal" == "false" ]] && [[ "$portIsOOS" == "false" ]] && [[ "$port_android_version" -lt 16 ]];then
@@ -2256,9 +2296,9 @@ if  [[ "${base_product_device}" == "OnePlus9Pro" ]] ||[[ "${base_product_device}
     echo -e "\n[FeatureTorch]\n    isSupportTorchStrengthLevel = TRUE\n    maxStrengthLevel = 4\n    defaultStrengthLevel = 4\n " >> build/portrom/images/odm/etc/camera/CameraHWConfiguration.config
 fi
 
-# Camera glass UI for the 9 Pro is patched further down, AFTER the modules loop —
-# see "Camera glass UI" near the Feather Engine call. It has to run there because
-# the Camera-*-fixes-ODM module blanket-copies its own odm/ tree over the build.
+# Camera glass UI for the 9 Pro is patched at the very END of the run, in the
+# "Camera glass UI" block just above "packing it all up". It has to be the last
+# thing to touch the odm tree — see the note there.
 
 if [[ ${port_android_version} == 16 ]] && [[ ${base_android_version} -lt 15 ]];then
     rm -rf build/portrom/images/system_ext/priv-app/com.qualcomm.location
@@ -2317,17 +2357,34 @@ fi
 
 sparkle "💄  module dress-up"
 
-# Modules. A descriptor that declares module_local_zip is applied from its own
-# devices/<device>/ folder and never downloaded — see add_module in caffeine.sh.
-# The OnePlus 9 camera fixes (ODM + ColorOS Global) work that way.
+# Modules. Descriptors are sourced by add_module (caffeine.sh), which fetches
+# files.zip + script.sh from ${module_repo}. A module can instead be kept in the
+# tree at devices/<device>/module_files/<module_name>/{script.sh,files/} — if that
+# folder exists it is used as-is and nothing is downloaded.
+#
+# Note their module_required_android_version / module_requires_experimental fields
+# do nothing: add_module skips with `continue`, which bash refuses outside a loop
+# in the same function, so every descriptor here always runs.
 for module in devices/${base_product_device}/modules/*.sh; do
     add_module $module
 done
 
 if [[ $portIsOOS == true ]]; then
-    for module in devices/${base_product_device}/modules/oos/*.sh; do
-        add_module $module
-    done
+    # From ColorOS 16 / OxygenOS 16 on, both branches ship the same camera stack,
+    # so the ColorOS 6.0 fixes are what an OxygenOS 16 port needs too — modules/oos
+    # only carries the 5.0 (Android 15) set. Run the cos modules instead of the oos
+    # ones rather than as well: they both replace my_product/app/OplusCamera and the
+    # CameraUnit jars, so applying both just downloads one camera to overwrite it
+    # with another.
+    if [[ ${port_android_version} -ge 16 ]]; then
+        for module in devices/${base_product_device}/modules/cos/*.sh; do
+            add_module $module
+        done
+    else
+        for module in devices/${base_product_device}/modules/oos/*.sh; do
+            add_module $module
+        done
+    fi
 fi
 if [[ $portIsColorOS == true ]]; then
     for module in devices/${base_product_device}/modules/cos/*.sh; do
@@ -2343,34 +2400,6 @@ if [[ $portIsRealmeUI == true ]]; then
     for module in devices/${base_product_device}/modules/rui/*.sh; do
         add_module $module
     done
-fi
-
-# Camera glass UI — OnePlus 9 Pro only (the only device here on the 6.0xx camera).
-# The ColorOS 16 camera picks between its redesigned translucent layout and the
-# legacy opaque one from com.oplus.camera.integration.ui.support, read out of the
-# ODM vendor-tag config via CameraUnit's FeatureApi. The 9 Pro's ODM is the stock
-# 2022 one and ships that tag as 0, so the camera silently falls back to the old UI.
-#
-# MUST stay after the modules loop: Camera-5.0-fixes-ODM's script.sh does
-# `cp -rf $module_files/* build/portrom/images/` and its payload includes its own
-# odm/etc/camera/config/oplus_camera_config with the tag back at 0, so patching
-# this any earlier (e.g. next to the torch fix) gets silently reverted.
-#
-# NOTE: only values of tags ALREADY in this file can be changed. Tag names that are
-# absent are not registered in the HAL's vendor tag descriptor, so adding entries
-# here does nothing — verified the hard way against zoom/none-SAT tags.
-if [[ "${base_product_device}" == "OnePlus9Pro" ]];then
-    camera_vendor_config="build/portrom/images/odm/etc/camera/config/oplus_camera_config"
-    if [[ -f "${camera_vendor_config}" ]];then
-        if grep -q "com.oplus.camera.integration.ui.support" "${camera_vendor_config}";then
-            sed -i '/com.oplus.camera.integration.ui.support/,+3 s/"Value": "0"/"Value": "1"/' "${camera_vendor_config}"
-            blue "Camera: ColorOS 16 glass UI enabled (integration.ui.support=1)"
-        else
-            yellow "Camera: integration.ui.support absent, skipping glass UI patch"
-        fi
-    else
-        yellow "Camera: odm vendor-tag config not found, skipping glass UI patch"
-    fi
 fi
 
 # ── Feather Engine: smoothness & performance tuning (SM8250 / SM8350) ────────
@@ -2509,6 +2538,114 @@ elif [[ $base_product_model == "LE2101" ]]; then
 else
     superSize=$(bash bin/getSuperSize.sh $base_product_device)
 fi
+
+# ── Camera glass UI — OnePlus 9 Pro / OnePlus 9 ─────────────────────────────
+# The ColorOS 16 camera picks between its redesigned translucent ("glass") layout
+# and the legacy opaque one from the ODM vendor tag
+# com.oplus.camera.integration.ui.support, read through CameraUnit's FeatureApi.
+# The 9-series ODM is the stock 2022 one and ships that tag as 0, so the camera
+# silently falls back to the old UI.
+#
+# This runs LAST, immediately before the partitions are packed, because several
+# earlier stages rewrite the odm tree wholesale — devices/<dev>/overlay, the
+# odm_selinux_fix zip, and any module whose script.sh does
+# `cp -rf $module_files/* build/portrom/images/`. Anything patched before them is
+# silently reverted. Nothing touches the filesystem tree after this point, so this
+# is the only position where the edit is guaranteed to reach the image.
+#
+# NOTE: only values of tags ALREADY in this file can be changed. Tag names that
+# are absent are not registered in the HAL's vendor tag descriptor, so adding
+# entries here does nothing — verified the hard way against zoom/none-SAT tags.
+if [[ "${base_product_device}" == "OnePlus9Pro" ]] || [[ "${base_product_device}" == "OnePlus9" ]];then
+    camera_vendor_config="build/portrom/images/odm/etc/camera/config/oplus_camera_config"
+    if [[ ! -f "${camera_vendor_config}" ]];then
+        # Some ODM builds move it; fall back to a search rather than silently skipping.
+        camera_vendor_config=$(find build/portrom/images/odm -name oplus_camera_config -type f 2>/dev/null | head -n1)
+    fi
+    if [[ -n "${camera_vendor_config}" ]] && [[ -f "${camera_vendor_config}" ]];then
+        if grep -q "com.oplus.camera.integration.ui.support" "${camera_vendor_config}";then
+            sed -i '/com.oplus.camera.integration.ui.support/,+3 s/"Value": *"0"/"Value": "1"/' "${camera_vendor_config}"
+            glass_ui_value=$(grep -A3 "com.oplus.camera.integration.ui.support" "${camera_vendor_config}" \
+                | grep '"Value"' | head -n1 | cut -d'"' -f4)
+            if [[ "${glass_ui_value}" == "1" ]];then
+                blue "Camera: ColorOS 16 glass UI enabled (integration.ui.support=1) in ${camera_vendor_config}"
+            else
+                error "Camera: glass UI patch did not stick — integration.ui.support is still '${glass_ui_value}'"
+            fi
+            unset glass_ui_value
+        else
+            yellow "Camera: integration.ui.support absent from ${camera_vendor_config}, skipping glass UI patch"
+        fi
+    else
+        yellow "Camera: odm vendor-tag config not found, skipping glass UI patch"
+    fi
+    unset camera_vendor_config
+fi
+
+
+# ── BrinaOS branding overlays ──────────────────────
+# Static RROs compiled or copied out of devices/common/rro/ into product/overlay.
+# Like the camera patch above they run last on purpose: any module whose script.sh
+# does `cp -rf $module_files/* build/portrom/images/` can replace whole partition
+# trees, so an overlay installed earlier can quietly disappear before packing.
+#
+# BrinaOSOtaCard swaps the picture behind the About device / OTA card on every port
+# the toolkit builds, and repaints about_phone_name_version_color - the one colour
+# Settings tints the device name and the version number with, a pale pink picked
+# for the stock artwork - so the whole card reads white.
+#
+# To change the picture, replace the files in
+# devices/common/rro/BrinaOSOtaCard/res/drawable/ - keep the resource names, the
+# extension can be jpg/png/webp. Settings stretches them to fill the card rather
+# than centre-cropping, so the aspect matters: the portrait names want roughly
+# 984x840 and the *_land ones roughly 1550x840. There is no text shadow anywhere
+# on that card, so a bright photo needs a scrim baked in or the labels vanish;
+# devices/common/rro/tools/ has the crop-and-scrim tool that made the ones in tree.
+build_static_rro BrinaOSOtaCard
+
+if [[ $portIsColorOSGlobal == true ]];then
+    # BrinaOSBrandName renames the OS on the About device page. There is no
+    # "ColorOS" string anywhere in Settings - the name is drawn as a logotype - so
+    # this overrides the four vectors that carry it: brand_logo on the older
+    # layout, brand_logo_16_1 on 16.1, about_device_easter_egg_logo behind the
+    # long-press easter egg, and coloros_15. The BrinaOS wordmark is drawn in the
+    # ColorOS letterforms themselves rather than a lookalike font; the tools
+    # README explains how.
+    build_static_rro BrinaOSBrandName
+
+    # The dual-row signal status bar with the big 5G glyph. Four static RROs
+    # against SystemUI and nothing else, so the Magisk module they came out of is
+    # not needed - see the README beside them for what else that module shipped
+    # and why none of it was carried over.
+    #
+    # PuiThemeStatusIcon.apk in there is patched rather than shipped as the
+    # author built it: its dual-row bars fill their canvas, and SystemUI stacks
+    # the bars and the data-type glyph in one end-aligned FrameLayout, so every
+    # G/E/3G/4G/5G glyph landed on top of the bars. devices/common/rro/tools/mkfix.py
+    # is what patched it and what to re-run after dropping in a newer module.
+    install_prebuilt_rro DualRowStatusBar
+
+    # BrinaOSUpdateApp does the same job for the Software update app, which draws
+    # its own card: kv_bg_16* is the picture behind it and logo_coloros* is the
+    # logotype under the big version number. That app keeps the logotype as a
+    # bitmap, so those are PNGs rasterised from the same wordmark - the tools
+    # README covers regenerating them.
+    build_static_rro BrinaOSUpdateApp
+
+    # BrinaOSAiName renames OPPO AI to BrinaAI. The Settings row and the page it
+    # opens both belong to com.oplus.pantanal.ums rather than to Settings, which
+    # has no "OPPO AI" string at all, so the overlay targets UMS.
+    build_static_rro BrinaOSAiName
+
+    # BrinaOSSetupWizard rebrands com.coloros.bootreg - the setup flow that runs
+    # on first boot and after a wipe. Its last page animates the word "ColorOS"
+    # on before the Get started button, as a Lottie rather than as text, so the
+    # overlay ships a replacement composition with the BrinaOS wordmark in it;
+    # the welcome page's background becomes the Sabrina theme. Neither shows up
+    # again until the next wipe, so testing means factory resetting.
+    build_static_rro BrinaOSSetupWizard
+fi
+
 
 sparkle "🎀  packing it all up"
 green "Super image size: ${superSize}"

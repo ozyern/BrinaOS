@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Static RRO: the artwork on the Software update card. The key visual behind
+     it (kv_bg_*) and the OS logotype under the big version number, which the OTA
+     app keeps as a bitmap rather than a vector - hence PNGs here where the
+     Settings overlay uses vectors. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="os.brina.overlay.ota.card">
+    <overlay
+        android:targetPackage="com.oplus.ota"
+        android:isStatic="true"
+        android:priority="9000" />
+    <application android:hasCode="false" />
+</manifest>
