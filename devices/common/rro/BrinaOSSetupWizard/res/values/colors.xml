@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Sabrina/BrinaOS accent across the setup flow.
+
+    bootreg resolves its COUI primary accent through its own named colors
+    (coui_color_primary_blue / _green and color_blue / color_green), and those
+    drive every "Next" / "Get started" button fill, the progress dots, the
+    radio/checkbox activated state, and text links on every page of the wizard -
+    not just the welcome and completion screens the drawables already rebrand.
+    Overriding the names by RRO recolours all of them to BrinaOS gold in one go.
+
+    We override BOTH the blue and green primaries because ColorOS picks the COUI
+    primary from the system theme colour, which can be either; recolouring both
+    means the accent is gold whichever the port ships with.
+
+    Gold shades match the OTA numeral / boot lockup (deep champagne #c9922e), a
+    tone dark enough to keep the button's white label legible.
+-->
+<resources>
+    <!-- COUI primary (buttons, progress, activated controls, links) -->
+    <color name="coui_color_primary_blue">#ffc9922e</color>
+    <color name="coui_color_primary_blue_dark">#ffb37f27</color>
+    <color name="coui_color_primary_blue_light">#ffe0b85c</color>
+    <color name="coui_color_primary_green">#ffc9922e</color>
+    <color name="coui_color_primary_green_dark">#ffb37f27</color>
+    <color name="coui_color_primary_green_light">#ffe0b85c</color>
+
+    <!-- Semantic accents used by the guide graphics (e.g. the smile circle) -->
+    <color name="color_blue">#ffc9922e</color>
+    <color name="color_green">#ffc9922e</color>
+</resources>

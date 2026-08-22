@@ -43,11 +43,21 @@ overlay layered on top.
 * **`customize.sh`** — Magisk installer plumbing, plus an `am start` that opens the
   author's Coolapk profile.
 
+`mkfix.py` keeps a pristine `PuiThemeStatusIcon.apk.orig` beside the output and
+always patches *from* that, so re-running it can never compound apktool
+round-trips. It also leaves the overlay's own priority (800) alone: 800 is what
+ships and what works — every signal/wifi/5G/notification icon themes at that
+priority. A well-meant bump to 9000 once made the whole overlay stop applying on
+a clean install (only the untouched battery overlays survived), so the lever is
+configuration match, not priority. The gap between the data-type glyph and the
+first signal bar is `GAP` in mkfix.py (currently 4dp).
+
 ## Updating
 
-Drop a newer build of the module in here as `*.apk` and the next port picks it up;
-`install_prebuilt_rro` copies every APK in the directory. Check the package names
-have not changed, since two overlays with the same package name cannot both be
-installed — and **re-run `python3 devices/common/rro/tools/mkfix.py`**, or the
-data-type glyphs go back to sitting on the bars. It is safe to run at any time;
-it prints what it did and does nothing to an APK that is already patched.
+Drop a newer build of the module in here as **both** `PuiThemeStatusIcon.apk`
+and `PuiThemeStatusIcon.apk.orig`, and the next port picks it up;
+`install_prebuilt_rro` copies every APK in the directory (the `.orig` is skipped,
+not being an `*.apk`). Check the package names have not changed, since two
+overlays with the same package name cannot both be installed — and **re-run
+`python3 devices/common/rro/tools/mkfix.py`**, or the data-type glyphs go back to
+sitting on the bars.

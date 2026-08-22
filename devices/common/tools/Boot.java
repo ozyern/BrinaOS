@@ -75,19 +75,19 @@ public class Boot {
 
         Lockup(Img crestArt, Img wordArt) {
             Img trimmed = trim(crestArt);
-            crestH = Math.round(H * 0.566f);                    // 440 of 777
+            crestH = Math.round(H * 0.77f);                     // 598 of 777 — commands the band
             crestW = Math.round(crestH * (float) trimmed.w / trimmed.h);
             crest = scale(trimmed, crestW, crestH);
-            halo = blur(crest, Math.max(6, crestH / 26));
+            halo = blur(crest, Math.max(6, crestH / 24));       // a touch softer for the size
 
-            int wordH = Math.round(H * 0.067f);                 // 52 of 777
+            int wordH = Math.round(H * 0.090f);                 // 70 of 777 — larger wordmark
             word = scale(wordArt, Math.round(wordH * (float) wordArt.w / wordArt.h), wordH);
 
-            int gap = Math.round(H * 0.062f);
-            int top = (H - (crestH + gap + wordH)) / 2 - Math.round(H * 0.021f);
-            crestX = (W - crestW) / 2;                          // a touch high reads better
+            int gap = Math.round(H * 0.036f);                   // tighter gap for the bigger art
+            int top = (H - (crestH + gap + wordH)) / 2 - Math.round(H * 0.012f);
+            crestX = (W - crestW) / 2;                          // crest stays centred
             crestY = top;
-            wordX = (W - word.w) / 2;
+            wordX = (W - word.w) / 2 + Math.round(W * 0.014f);  // nudge text right
             wordY = top + crestH + gap;
         }
 
@@ -107,12 +107,16 @@ public class Boot {
             public int count() { return n0; }
             public int[] frame(int f) {
                 double t = (double) f / (count() - 1);
-                double in = ease(clamp01(t / 0.40));            // crest arrives
-                return l.draw(0.90 + 0.10 * in, in,
-                        0.62 * bump(t / 0.55) + 0.18 * in,      // glow blooms, then settles
-                        window(t, 0.24, 0.72),
-                        ease(clamp01((t - 0.42) / 0.30)),
-                        ease(clamp01((t - 0.40) / 0.34)));
+                double enter = clamp01(t / 0.46);               // crest rises and settles
+                double in = ease(enter);
+                // Grow from 0.84 with a soft overshoot so the crest lands rather
+                // than just cross-fades - the settle is what makes it a welcome.
+                double scale = 0.84 + 0.16 * easeOutBack(enter);
+                return l.draw(scale, in,
+                        0.82 * bump(t / 0.52) + 0.26 * in,      // luminous bloom at arrival
+                        window(t, 0.24, 0.82),                   // one slow, wide sheen
+                        ease(clamp01((t - 0.46) / 0.34)),        // word fades up once crest lands
+                        ease(clamp01((t - 0.44) / 0.40)));       // then wipes on
             }
         };
         Seq part1 = new Seq() {
@@ -120,8 +124,8 @@ public class Boot {
             public int[] frame(int f) {
                 double t = (double) f / count();                // loops, so no -1
                 return l.draw(1.0, 1.0,
-                        0.18 + 0.11 * (1 - Math.cos(2 * Math.PI * t)) / 2,
-                        window(t, 0.10, 0.52), 1.0, 1.0);
+                        0.20 + 0.13 * (1 - Math.cos(2 * Math.PI * t)) / 2,  // gentle breathing
+                        window(t, 0.08, 0.50), 1.0, 1.0);        // one sheen shimmer per loop
             }
         };
         return new Seq[] { part0, part1 };
@@ -438,6 +442,12 @@ public class Boot {
     static double clamp01(double v) { return v < 0 ? 0 : v > 1 ? 1 : v; }
     static int clamp(double v) { return v < 0 ? 0 : v > 255 ? 255 : (int) (v + 0.5); }
     static double ease(double t) { return 1 - Math.pow(1 - t, 3); }
+
+    /** Ease-out with a gentle overshoot past 1 before it settles - the "pop". */
+    static double easeOutBack(double t) {
+        double c1 = 1.20158, c3 = c1 + 1, u = t - 1;
+        return 1 + c3 * u * u * u + c1 * u * u;
+    }
 
     /** 0 -> 1 -> 0 over [0,1], flat outside. */
     static double bump(double t) { return t <= 0 || t >= 1 ? 0 : Math.sin(Math.PI * t); }

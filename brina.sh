@@ -900,6 +900,17 @@ if [[ ${portIsOOS} == true || ${portIsColorOSGlobal} == true ]];then
         if ! grep -q "^ro.control_privapp_permissions=" build/portrom/images/system/system/build.prop;then
             echo "ro.control_privapp_permissions=" >> build/portrom/images/system/system/build.prop
         fi
+
+        # Patch framework.jar and services.jar with the Kaorios driver hooks.
+        # This is what makes the app recognise the framework on first boot —
+        # without it, the app shows "framework not found" and the on-device
+        # patcher has nothing to hook into.
+        if [[ -f devices/common/prebuilt/KaoriosToolbox/patch_framework.sh ]];then
+            bash devices/common/prebuilt/KaoriosToolbox/patch_framework.sh || {
+                yellow "Kaorios framework patching failed — the app will show 'framework not found'"
+                yellow "You can still run the on-device patcher manually after first boot"
+            }
+        fi
     else
         yellow "Kaorios Toolbox: ${KAORIOS_SRC} not found, skipping"
     fi
@@ -1570,21 +1581,33 @@ sed -i -e '$a\'$'\n''persist.adb.notify=0' build/portrom/images/system/system/bu
 # carried them in system/build.prop bootlooped. persist.* in build.prop is also
 # the weaker position - it is a default that /data/property can override, and
 # /data survives every flash.
-# NOTE: delete this block for a release build. ro.debuggable=1 breaks Play
-# Integrity, so banking apps and Google Wallet will refuse to run.
-blue "Disabling RescueParty and enabling unauthenticated adb (debug build)"
-for debug_prop in ro.adb.secure ro.debuggable ro.secure \
-                  persist.sys.usb.config persist.sys.disable_rescue ro.sys.rescue_level;do
-    sed -i "/^${debug_prop}=/d" build/portrom/images/vendor/default.prop
+# Debug props: ro.debuggable=1 and ro.secure=0 break Play Integrity, so banking
+# apps and Google Wallet will refuse to run. Only inject them when explicitly
+# requested via BRINA_DEBUG_BUILD=1, e.g.:
+#     BRINA_DEBUG_BUILD=1 bash brina.sh …
+# RescueParty disable is always safe and stays outside the gate.
+for rescue_prop in persist.sys.disable_rescue ro.sys.rescue_level;do
+    sed -i "/^${rescue_prop}=/d" build/portrom/images/vendor/default.prop
 done
 cat >> build/portrom/images/vendor/default.prop <<'EOF'
+persist.sys.disable_rescue=true
+ro.sys.rescue_level=0
+EOF
+
+if [[ "${BRINA_DEBUG_BUILD:-0}" == "1" ]];then
+    blue "DEBUG BUILD: enabling unauthenticated adb and ro.debuggable (breaks Play Integrity)"
+    for debug_prop in ro.adb.secure ro.debuggable ro.secure persist.sys.usb.config;do
+        sed -i "/^${debug_prop}=/d" build/portrom/images/vendor/default.prop
+    done
+    cat >> build/portrom/images/vendor/default.prop <<'EOF'
 ro.adb.secure=0
 ro.debuggable=1
 ro.secure=0
 persist.sys.usb.config=adb
-persist.sys.disable_rescue=true
-ro.sys.rescue_level=0
 EOF
+else
+    blue "Release build: debug props left at stock values (Play Integrity safe)"
+fi
 
 base_rom_density=$(grep "ro.sf.lcd_density" --include="*.prop" -r build/baserom/images/my_product | head -n 1 | cut -d "=" -f2)
 [ -z ${base_rom_density} ] && base_rom_density=480
@@ -2626,10 +2649,12 @@ if [[ $portIsColorOSGlobal == true ]];then
     install_prebuilt_rro DualRowStatusBar
 
     # BrinaOSUpdateApp does the same job for the Software update app, which draws
-    # its own card: kv_bg_16* is the picture behind it and logo_coloros* is the
-    # logotype under the big version number. That app keeps the logotype as a
-    # bitmap, so those are PNGs rasterised from the same wordmark - the tools
-    # README covers regenerating them.
+    # its own card: kv_bg_16* is the picture behind it, logo_coloros* is the
+    # small wordmark, and kv_16 / kv_16_1 are the giant version numerals the card
+    # shows at "Version up to date" - stock draws those in the ColorOS gradient,
+    # which is why that screen kept reading ColorOS until they were overridden.
+    # The app keeps all of these as bitmaps; mkkv.sh recolours the numerals to
+    # BrinaOS gold and the tools README covers regenerating the rest.
     build_static_rro BrinaOSUpdateApp
 
     # BrinaOSAiName renames OPPO AI to BrinaAI. The Settings row and the page it
@@ -2641,8 +2666,14 @@ if [[ $portIsColorOSGlobal == true ]];then
     # on first boot and after a wipe. Its last page animates the word "ColorOS"
     # on before the Get started button, as a Lottie rather than as text, so the
     # overlay ships a replacement composition with the BrinaOS wordmark in it;
-    # the welcome page's background becomes the Sabrina theme. Neither shows up
-    # again until the next wipe, so testing means factory resetting.
+    # the welcome page's background becomes the Sabrina theme. res/values/colors
+    # recolours bootreg's own COUI primaries (coui_color_primary_blue/_green and
+    # color_blue/_green) to BrinaOS gold, so every Next/Get started button,
+    # progress dot, activated control and link across the whole flow - not just
+    # the hero screens - reads gold. Both blue and green primaries are overridden
+    # because ColorOS picks the accent from the system theme, which can be either.
+    # None of this shows up again until the next wipe, so testing means factory
+    # resetting.
     build_static_rro BrinaOSSetupWizard
 fi
 

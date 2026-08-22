@@ -27,9 +27,12 @@ module leaves one copy of each glyph and no ordering question.
 
     python3 devices/common/rro/tools/mkfix.py     # run from the toolkit root
 
-Re-run it after dropping a newer build of the module into prebuilt/. It is
-idempotent: glyphs that already carry the right inset are left alone, and if
-every one of them does the APK is not rewritten at all.
+It always decompiles PuiThemeStatusIcon.apk.orig - the pristine, unpatched
+module APK kept beside the output - and writes PuiThemeStatusIcon.apk, so
+running it twice can never compound apktool round-trips (an earlier priority
+bump did exactly that and knocked the whole overlay out on a clean install).
+To move to a newer build of the module, drop it in as BOTH .apk and .orig,
+then run this once.
 """
 import glob
 import os
@@ -40,13 +43,23 @@ import sys
 import tempfile
 
 APK = 'devices/common/rro/prebuilt/DualRowStatusBar/PuiThemeStatusIcon.apk'
+# Pristine, unpatched copy of the module APK. mkfix always decompiles this, never
+# the output APK, so repeated runs cannot compound apktool round-trips. Restored
+# once from the source module; if it is missing we fall back to APK itself.
+ORIG = APK + '.orig'
 APKTOOL = 'bin/apktool/apktool.jar'
 APKSIGNER = 'otatools/bin/apksigner'
 KEY = 'otatools/key/testkey.pk8'
 CERT = 'otatools/key/testkey.x509.pem'
+# Leave the overlay's own priority (800) alone. It is what shipped and what
+# works: at 800 every signal/wifi/5G/notification icon themes correctly on the
+# device. Bumping it to 9000 made the whole overlay stop applying on a clean
+# install (only the untouched battery overlays survived), so priority is not the
+# lever here - configuration match is, and the type glyphs already sit in
+# drawable-xxhdpi. mkfix therefore does not touch the manifest at all.
 BARS = 'res/drawable/stat_signal_signal_lte_single_4.xml'
 GLYPHS = ('stat_signal_connected_', 'stat_sys_data_fully_connected_')
-GAP = 2.0        # dp between the glyph and the first bar
+GAP = 4.0        # dp between the glyph and the first bar (was 2; a touch more air)
 
 
 def run(*args):
@@ -89,8 +102,10 @@ def set_inset(text, left, right):
 def main():
     work = tempfile.mkdtemp()
     src = os.path.join(work, 'src')
+    base = ORIG if os.path.exists(ORIG) else APK
     try:
-        run('java', '-jar', APKTOOL, 'd', '-f', '-o', src, APK)
+        run('java', '-jar', APKTOOL, 'd', '-f', '-o', src, base)
+        print('patching from %s' % base)
 
         bars_xml = open(os.path.join(src, BARS), encoding='utf-8').read()
         bars = dp(bars_xml, 'insetLeft') + dp(bars_xml, 'insetRight') + dp(bars_xml, 'width')
@@ -125,11 +140,8 @@ def main():
             print('  %-44s ink %7s dp, insetLeft %7s dp'
                   % (os.path.basename(path)[:-4], num(ink[path]), num(left)))
 
-        if done == len(files):
-            print('%s is already patched, left alone' % APK)
-            return
         if done:
-            print('  (%d of %d were already patched)' % (done, len(files)))
+            print('  (%d of %d already had the right inset)' % (done, len(files)))
 
         unsigned = os.path.join(work, 'unsigned.apk')
         run('java', '-jar', APKTOOL, 'b', src, '-o', unsigned)
