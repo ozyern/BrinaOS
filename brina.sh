@@ -6,7 +6,9 @@
 #  Feed it a base ROM and a port ROM, walk away, come back to a
 #  flashable zip. Espresso in, ColorOS out.
 #
-#  Usage:  ./brina.sh <BASEROM> <PORTROM> [PORTROM2] [PARTS]
+#  Usage:  ./brina.sh [--Brina] <BASEROM> <PORTROM> [PORTROM2] [PARTS]
+#          --Brina applies the BrinaOS branding (wordmark, OTA card, setup-wizard
+#          theme, boot animation, Sabrina build props). Omit it for a clean port.
 #  Setup:  ./willpower.sh   (run this first -- it installs the deps)
 #  Helpers live in caffeine.sh.
 #
@@ -21,6 +23,19 @@
 
 build_user="Sabrina Carpenter"
 build_host="ReVork"
+
+# BrinaOS branding is opt-in. --Brina (anywhere in the args) turns it on; without
+# it the script produces a clean port with none of the BrinaOS cosmetics. Pull the
+# flag out of the args first so the positional BASEROM/PORTROM below still line up.
+brina_mode=false
+_args=()
+for _a in "$@"; do
+    case "$_a" in
+        --Brina|--brina) brina_mode=true ;;
+        *) _args+=("$_a") ;;
+    esac
+done
+set -- "${_args[@]}"
 
 # Base ROM and Port ROM are passed as external arguments
 baserom="$1"
@@ -1548,9 +1563,12 @@ for i in $(find build/portrom/images -type f -name "build.prop");do
     sed -i "s/$port_product_name/$base_product_name/g" ${i}
     sed -i "s/$port_my_product_type/$base_my_product_type/g" ${i}
     sed -i "s/$port_product_device/$base_product_device/g" ${i}
-    # add build user info
-    sed -i "s/ro.build.user=.*/ro.build.user=${build_user}/g" ${i}
-    sed -i "s/ro.build.host=.*/ro.build.host=${build_host}/g" ${i}
+    # add build user info -- the Sabrina/ReVork stamp is a BrinaOS signature, so
+    # only in --Brina mode; a clean port keeps the port ROM's own build user/host.
+    if [[ $brina_mode == true ]]; then
+        sed -i "s/ro.build.user=.*/ro.build.user=${build_user}/g" ${i}
+        sed -i "s/ro.build.host=.*/ro.build.host=${build_host}/g" ${i}
+    fi
     sed -i "s/ro.build.display.id=.*/ro.build.display.id=${target_display_id}/g" ${i}
     sed -i "s/ro.oplus.radio.global_regionlock.enabled=.*/ro.oplus.radio.global_regionlock.enabled=false/g" ${i}
     sed -i "s/persist.sys.radio.global_regionlock.allcheck=.*/persist.sys.radio.global_regionlock.allcheck=false/g" ${i}
@@ -2149,7 +2167,7 @@ fi
 # would otherwise still boot OPPO. Regenerate the zips with
 # devices/common/tools/mkboot.sh.
 bootanim_dir=build/portrom/images/my_product/media/bootanimation
-if [[ -f devices/common/bootanimation.zip && -d $bootanim_dir ]]; then
+if [[ $brina_mode == true && -f devices/common/bootanimation.zip && -d $bootanim_dir ]]; then
     replaced=0
     while read -r zip; do
         case "$(basename "$zip")" in
@@ -2624,6 +2642,10 @@ fi
 # 984x840 and the *_land ones roughly 1550x840. There is no text shadow anywhere
 # on that card, so a bright photo needs a scrim baked in or the labels vanish;
 # devices/common/rro/tools/ has the crop-and-scrim tool that made the ones in tree.
+#
+# The whole branding section below is gated on --Brina: a plain port gets none of
+# these overlays. (Body kept at its existing indent to keep the diff readable.)
+if [[ $brina_mode == true ]]; then
 build_static_rro BrinaOSOtaCard
 
 if [[ $portIsColorOSGlobal == true ]];then
@@ -2635,18 +2657,6 @@ if [[ $portIsColorOSGlobal == true ]];then
     # ColorOS letterforms themselves rather than a lookalike font; the tools
     # README explains how.
     build_static_rro BrinaOSBrandName
-
-    # The dual-row signal status bar with the big 5G glyph. Four static RROs
-    # against SystemUI and nothing else, so the Magisk module they came out of is
-    # not needed - see the README beside them for what else that module shipped
-    # and why none of it was carried over.
-    #
-    # PuiThemeStatusIcon.apk in there is patched rather than shipped as the
-    # author built it: its dual-row bars fill their canvas, and SystemUI stacks
-    # the bars and the data-type glyph in one end-aligned FrameLayout, so every
-    # G/E/3G/4G/5G glyph landed on top of the bars. devices/common/rro/tools/mkfix.py
-    # is what patched it and what to re-run after dropping in a newer module.
-    install_prebuilt_rro DualRowStatusBar
 
     # BrinaOSUpdateApp does the same job for the Software update app, which draws
     # its own card: kv_bg_16* is the picture behind it, logo_coloros* is the
@@ -2675,6 +2685,22 @@ if [[ $portIsColorOSGlobal == true ]];then
     # None of this shows up again until the next wipe, so testing means factory
     # resetting.
     build_static_rro BrinaOSSetupWizard
+fi
+fi  # brina_mode -- end of BrinaOS branding overlays
+
+# The dual-row signal status bar with the big 5G glyph is a functional SystemUI
+# improvement rather than BrinaOS branding, so it ships on every ColorOS-global
+# port regardless of --Brina. Four static RROs against SystemUI and nothing else,
+# so the Magisk module they came out of is not needed - see the README beside them
+# for what else that module shipped and why none of it was carried over.
+#
+# PuiThemeStatusIcon.apk in there is patched rather than shipped as the author
+# built it: its dual-row bars fill their canvas, and SystemUI stacks the bars and
+# the data-type glyph in one end-aligned FrameLayout, so every G/E/3G/4G/5G glyph
+# landed on top of the bars. devices/common/rro/tools/mkfix.py is what patched it
+# and what to re-run after dropping in a newer module.
+if [[ $portIsColorOSGlobal == true ]]; then
+    install_prebuilt_rro DualRowStatusBar
 fi
 
 
