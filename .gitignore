@@ -20,3 +20,6 @@ devices/common/32bit-compatibility.zip
 # Python leftovers
 __pycache__/
 *.pyc
+
+# Build logs
+build.log

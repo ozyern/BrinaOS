@@ -2583,14 +2583,14 @@ if [[ ${port_android_version} == 17 ]];then
         else
             a17_tmp=$(mktemp -d "${TMPDIR:-tmp}/a17-wifi.XXXXXX")
             mkdir -p "${a17_tmp}/framework"
-            java -jar bin/apktool/apktool.jar if -p "${a17_tmp}/framework" "${framework_res}" || { error "Failed to install framework-res"; exit 1; }
-            java -jar bin/apktool/apktool.jar if -p "${a17_tmp}/framework" "${oplus_framework_res}" || { error "Failed to install oplus-framework-res"; exit 1; }
-            java -jar bin/apktool/apktool.jar d -f -p "${a17_tmp}/framework" -o "${a17_tmp}/OplusWifiResource" "${wifi_rro}" || { error "Failed to decode OplusWifiResource"; exit 1; }
+            java -jar bin/apktool/apktool_3.0.3.jar if -p "${a17_tmp}/framework" "${framework_res}" || { error "Failed to install framework-res"; exit 1; }
+            java -jar bin/apktool/apktool_3.0.3.jar if -p "${a17_tmp}/framework" "${oplus_framework_res}" || { error "Failed to install oplus-framework-res"; exit 1; }
+            java -jar bin/apktool/apktool_3.0.3.jar d -f -p "${a17_tmp}/framework" -o "${a17_tmp}/OplusWifiResource" "${wifi_rro}" || { error "Failed to decode OplusWifiResource"; exit 1; }
             bool_file=$(grep -R -l --include="bools.xml" "config_wifiChannelUtilizationOverrideEnabled" "${a17_tmp}/OplusWifiResource/res" 2>/dev/null | head -n 1)
             [[ -n "${bool_file}" ]] || { error "RRO bool config_wifiChannelUtilizationOverrideEnabled not found"; exit 1; }
             sed -E -i 's#(<bool[[:space:]]+name="config_wifiChannelUtilizationOverrideEnabled">)[^<]*(</bool>)#\1true\2#' "${bool_file}"
             grep -Eq '<bool[[:space:]]+name="config_wifiChannelUtilizationOverrideEnabled">true</bool>' "${bool_file}" || { error "Failed to set Wi-Fi bool"; exit 1; }
-            java -jar bin/apktool/apktool.jar b -f -p "${a17_tmp}/framework" -o "${a17_tmp}/OplusWifiResource-unsigned.apk" "${a17_tmp}/OplusWifiResource" || { error "Failed to rebuild OplusWifiResource"; exit 1; }
+            java -jar bin/apktool/apktool_3.0.3.jar b -f -p "${a17_tmp}/framework" -o "${a17_tmp}/OplusWifiResource-unsigned.apk" "${a17_tmp}/OplusWifiResource" || { error "Failed to rebuild OplusWifiResource"; exit 1; }
             otatools/bin/apksigner sign --in "${a17_tmp}/OplusWifiResource-unsigned.apk" --out "${a17_tmp}/OplusWifiResource-signed.apk" --key otatools/key/testkey.pk8 --cert otatools/key/testkey.x509.pem --v1-signing-enabled true --v2-signing-enabled true --v3-signing-enabled true || { error "Failed to sign OplusWifiResource"; exit 1; }
             otatools/bin/apksigner verify --verbose "${a17_tmp}/OplusWifiResource-signed.apk" || { error "Signature verification failed"; exit 1; }
             cp -p "${a17_tmp}/OplusWifiResource-signed.apk" "${wifi_rro}"

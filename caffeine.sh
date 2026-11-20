@@ -1057,8 +1057,14 @@ add_module() {
     unset module_local_dir
 
     mkdir -p cache/${module_name}
-    curl -L ${module_repo}/raw/refs/heads/${module_repo_branch}/${module_name}/files.zip -o cache/${module_name}/files.zip
-    curl -L ${module_repo}/raw/refs/heads/${module_repo_branch}/${module_name}/script.sh -o cache/${module_name}/script.sh
+    # -f: on a 404 curl must fail instead of saving GitHub's HTML error page,
+    # which would otherwise be unzipped and then *sourced* as script.sh.
+    if ! curl -fL ${module_repo}/raw/refs/heads/${module_repo_branch}/${module_name}/files.zip -o cache/${module_name}/files.zip \
+        || ! curl -fL ${module_repo}/raw/refs/heads/${module_repo_branch}/${module_name}/script.sh -o cache/${module_name}/script.sh; then
+        yellow "Module ${module_name} not available at ${module_repo} (${module_repo_branch}) -- skipping"
+        rm -rf cache/${module_name}
+        return 0
+    fi
     module_files=cache/${module_name}/files
     unzip -o cache/${module_name}/files.zip -d ${module_files}
     source cache/${module_name}/script.sh
@@ -2235,6 +2241,21 @@ _port::postdata_install_mapping() {
     done
 
     return 0
+}
+
+# SHA-256 of a file (from upstream functions.sh; used to log SELinux mapping hashes).
+port_sha256_file() {
+    local file="${1:-}"
+    local output=""
+    [[ -f "${file}" ]] || return 1
+    if command -v sha256sum >/dev/null 2>&1; then
+        output=$(sha256sum -- "${file}") || return 1
+    elif command -v shasum >/dev/null 2>&1; then
+        output=$(shasum -a 256 "${file}") || return 1
+    else
+        return 1
+    fi
+    printf '%s\n' "${output%% *}"
 }
 
 _port::postdata_prepare_mapping() {
