@@ -1436,7 +1436,13 @@ elif [[ -f "$targetSystemUI" ]]; then
     for style_xml_file in $(find tmp/SystemUI -name "styles.xml");do 
         sed -i "s/style\/null/7f1403f6/g" $style_xml_file
     done
-    java -jar bin/apktool/APKEditor.jar b -f -i tmp/SystemUI -o build/${app_patch_folder}/patched/SystemUI.apk $extra_args
+    java -jar bin/apktool/APKEditor.jar b -f -i tmp/SystemUI -o tmp/SystemUI.apkeditor.apk $extra_args
+    # APKEditor's resource rebuild mangles A17 framework colors (@android:color/system_*_dark
+    # -> invalid ?attr), crash-looping SystemUI (black screen flashes). Keep stock resources,
+    # take only the patched dex.
+    python3 bin/apk_swap_dex.py tmp/$(basename $targetSystemUI).bak tmp/SystemUI.apkeditor.apk tmp/SystemUI.unaligned.apk
+    otatools/bin/zipalign -f -p 4 tmp/SystemUI.unaligned.apk build/${app_patch_folder}/patched/SystemUI.apk
+    rm -f tmp/SystemUI.apkeditor.apk tmp/SystemUI.unaligned.apk
     cp -rfv build/${app_patch_folder}/patched/SystemUI.apk $targetSystemUI
 fi
 
