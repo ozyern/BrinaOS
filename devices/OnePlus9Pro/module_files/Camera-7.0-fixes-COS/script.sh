@@ -43,4 +43,9 @@ rm -rf build/portrom/images/my_product/app/OplusCamera
 rm -f build/portrom/images/my_product/product_overlay/framework/com.oplus.camera.*.jar
 rm -f build/portrom/images/my_product/product_overlay/framework/oat/*/com.oplus.camera.*
 cp -rf "${camera7_cache}/files/"* build/portrom/images/
+# Same as the Camera 5.0 (OOS) fix, which is proven on the 9 Pro.
+camera7_prop=build/portrom/images/my_product/etc/bruce/build.prop
+if [[ -f "${camera7_prop}" ]] && ! grep -q "^ro.vendor.oplus.camera.isSupportLumo=" "${camera7_prop}";then
+    echo "ro.vendor.oplus.camera.isSupportLumo=1" >> "${camera7_prop}"
+fi
 green "Camera 7.0 (OplusCamera 17.0.16) installed with its unit SDK and JNI libs"
