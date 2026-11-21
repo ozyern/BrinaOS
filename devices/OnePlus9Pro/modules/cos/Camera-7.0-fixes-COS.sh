@@ -7,4 +7,5 @@ module_repo_branch=main
 module_required_android_version=17
 module_requires_experimental=1
 # Applied from devices/OnePlus9Pro/module_files/Camera-7.0-fixes-COS (local
-# payload); its script.sh fetches the payload zip from the BrinaOS release.
+# payload). CN ports: unpacks the port's own camera APEX into a system app.
+# Other ports: OnePlus 15 payload from the camera-7.0-fixes release.

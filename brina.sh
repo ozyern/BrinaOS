@@ -2760,18 +2760,32 @@ done
 
 # OplusCamera links the optional shared library com.oplus.camera.unit.sdk, whose
 # jars land in /product/framework (from my_product/product_overlay/framework), but
-# nothing registers them, so the camera dies with missing classes. Verified on
-# device: this permissions file makes pm list libraries show both.
-if [[ -f build/portrom/images/my_product/product_overlay/framework/com.oplus.camera.unit.sdk.jar ]] && \
-   ! grep -rqs 'library name="com.oplus.camera.unit.sdk"' build/portrom/images/my_product/etc/permissions build/portrom/images/product/etc/permissions;then
-    mkdir -p build/portrom/images/my_product/etc/permissions
-    cat > build/portrom/images/my_product/etc/permissions/com.oplus.camera.unit.sdk.xml <<'EOF'
-<?xml version="1.0" encoding="utf-8"?>
-<permissions>
-    <library name="com.oplus.camera.unit.sdk.adapter" file="/product/framework/com.oplus.camera.unit.sdk.adapter.jar" />
-    <library name="com.oplus.camera.unit.sdk" file="/product/framework/com.oplus.camera.unit.sdk.jar" dependency="com.oplus.camera.unit.sdk.adapter" />
-</permissions>
-EOF
+# nothing registers them, so the camera dies with missing classes
+# (NoClassDefFoundError CameraAdapterUtils). The file has to go in
+# my_product/product_overlay/etc/permissions: that is what ends up in
+# /product/etc/permissions; my_product/etc/permissions is never read.
+# Verified on device. Skipped when a file there already registers the SDK.
+camera_sdk_fw=build/portrom/images/my_product/product_overlay/framework
+camera_sdk_perm=build/portrom/images/my_product/product_overlay/etc/permissions
+if [[ -f ${camera_sdk_fw}/com.oplus.camera.unit.sdk.jar ]] && \
+   ! grep -rqsE 'name *= *"com\.oplus\.camera\.unit\.sdk" *file *= *"/product/framework/' ${camera_sdk_perm} build/portrom/images/product/etc/permissions;then
+    mkdir -p ${camera_sdk_perm}
+    {
+        echo '<?xml version="1.0" encoding="utf-8"?>'
+        echo '<permissions>'
+        if [[ -f ${camera_sdk_fw}/com.oplus.camera.unit.sdk.adapter.jar ]];then
+            echo '    <library name="com.oplus.camera.unit.sdk.adapter" file="/product/framework/com.oplus.camera.unit.sdk.adapter.jar" />'
+            echo '    <library name="com.oplus.camera.unit.sdk" file="/product/framework/com.oplus.camera.unit.sdk.jar" dependency="com.oplus.camera.unit.sdk.adapter" />'
+            echo '    <library name="com.oppo.camera.unit.sdk" file="/product/framework/com.oplus.camera.unit.sdk.jar" dependency="com.oplus.camera.unit.sdk.adapter" />'
+        else
+            echo '    <library name="com.oplus.camera.unit.sdk" file="/product/framework/com.oplus.camera.unit.sdk.jar" />'
+            echo '    <library name="com.oppo.camera.unit.sdk" file="/product/framework/com.oplus.camera.unit.sdk.jar" />'
+        fi
+        [[ -f build/portrom/images/system_ext/framework/androidx.camera.extensions.impl.jar ]] && \
+            echo '    <library name="androidx.camera.extensions.impl" file="/system_ext/framework/androidx.camera.extensions.impl.jar" />'
+        echo '</permissions>'
+    } > ${camera_sdk_perm}/com.oplus.camera.unit.sdk.xml
+    rm -f build/portrom/images/my_product/etc/permissions/com.oplus.camera.unit.sdk.xml
     green "Camera: registered the com.oplus.camera.unit.sdk shared libraries"
 fi
 
