@@ -2685,11 +2685,37 @@ if [[ ${port_android_version} == 17 ]];then
     # boot-complete, the Watchdog kills it and the UI soft-reboots every ~2 min.
     # Switch the import to checkService so the library falls back to HIDL.
     a17_vendor_aidl_qspm=$(grep -rhs -A2 'format="aidl"' build/portrom/images/vendor/etc/vintf build/portrom/images/odm/etc/vintf 2>/dev/null | grep -c "vendor.qti.qspmhal")
-    a17_updateprof="build/portrom/images/system_ext/lib64/libupdateprof.qti.so"
-    if [[ -f "${a17_updateprof}" && "${a17_vendor_aidl_qspm}" == "0" ]];then
-        python3 bin/patch_qspm_waitforservice.py "${a17_updateprof}" || { error "Failed to patch libupdateprof.qti.so"; exit 1; }
-        green "libupdateprof.qti.so falls back to the HIDL qspmhal -- no more watchdog soft reboots"
+    # libtrigger-handler.so does the same wait (system_server logs "Waited one
+    # second for vendor.qti.qspmhal.IQspmhal/default" ~35x per boot) before its
+    # own HIDL fallback.
+    if [[ "${a17_vendor_aidl_qspm}" == "0" ]];then
+        for a17_qspm_lib in libupdateprof.qti.so libtrigger-handler.so;do
+            a17_qspm_path="build/portrom/images/system_ext/lib64/${a17_qspm_lib}"
+            [[ -f "${a17_qspm_path}" ]] || continue
+            grep -qa "qspmhal" "${a17_qspm_path}" || continue
+            python3 bin/patch_qspm_waitforservice.py "${a17_qspm_path}" || { error "Failed to patch ${a17_qspm_lib}"; exit 1; }
+            green "${a17_qspm_lib} falls back to the HIDL qspmhal -- no more waiting on the AIDL one"
+        done
     fi
+fi
+
+# apexd only scans /system, /system_ext, /product, /vendor and /odm apex dirs.
+# ColorOS 17 CN ships the camera as /my_product/apex/com.oplus.camera.app.apex,
+# which never activates on the port, so the Camera app is missing. Move such
+# APEXes to /system_ext/apex (the my_product image shrinks by the same size).
+port_apexd="build/portrom/images/system/system/bin/apexd"
+if [[ -d build/portrom/images/my_product/apex && -f "${port_apexd}" ]] && ! grep -qa "/my_product/apex" "${port_apexd}";then
+    for myp_apex in build/portrom/images/my_product/apex/*.apex build/portrom/images/my_product/apex/*.capex;do
+        [[ -f "${myp_apex}" ]] || continue
+        mkdir -p build/portrom/images/system_ext/apex
+        if [[ -e build/portrom/images/system_ext/apex/$(basename "${myp_apex}") ]];then
+            yellow "$(basename "${myp_apex}") already in /system_ext/apex, dropping the /my_product copy"
+            rm -f "${myp_apex}"
+        else
+            mv -f "${myp_apex}" build/portrom/images/system_ext/apex/
+            green "Moved $(basename "${myp_apex}") from /my_product/apex to /system_ext/apex (apexd never scans my_product)"
+        fi
+    done
 fi
 
 if [[ -f devices/common/hdr_fix.zip ]] && [[ $base_android_version -le 14 ]];then
