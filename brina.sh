@@ -1287,7 +1287,25 @@ targetEyeProtect=$(find build/portrom/images/ -name "EyeProtect.apk" -o -name "O
 if [[ -z "$targetEyeProtect" ]]; then
     targetEyeProtect=$(find build/portrom/images/ -path "*/com.oplus.eyeprotect/*" -name "*.apk" | head -n1)
 fi
+# EyeProtect needs WRITE_SECURE_SETTINGS, which only the platform key grants.
+# The patched APK is signed with a different OPlus key than e.g. the COS17
+# PYB110 platform, and then crashes on start ("Permission denial, must have
+# one of: [android.permission.WRITE_SECURE_SETTINGS]"). Only swap it in when
+# its signer matches the portrom's framework-res.apk.
+apk_signer_digest() {
+    otatools/bin/apksigner verify --min-sdk-version 30 --print-certs "$1" 2>/dev/null \
+        | grep -m1 "certificate SHA-256 digest" | awk '{print $NF}'
+}
+eyeprotect_key_ok=false
 if [[ -n "$targetEyeProtect" ]] && [[ -f devices/common/eyecomfortpatch.apk ]]; then
+    platform_apk=$(find build/portrom/images/system -name "framework-res.apk" | head -n1)
+    platform_digest=$(apk_signer_digest "$platform_apk")
+    patch_digest=$(apk_signer_digest devices/common/eyecomfortpatch.apk)
+    [[ -n "$platform_digest" && "$platform_digest" == "$patch_digest" ]] && eyeprotect_key_ok=true
+fi
+if [[ -n "$targetEyeProtect" ]] && [[ -f devices/common/eyecomfortpatch.apk ]] && [[ "$eyeprotect_key_ok" != "true" ]]; then
+    yellow "eyecomfortpatch.apk is not signed with this ROM's platform key -- keeping stock Eye Comfort"
+elif [[ -n "$targetEyeProtect" ]] && [[ -f devices/common/eyecomfortpatch.apk ]]; then
     blue "Replacing Eye Comfort APK with patched version"
     cp -rfv devices/common/eyecomfortpatch.apk "$targetEyeProtect"
     green "Eye Comfort APK replaced"
@@ -2653,6 +2671,18 @@ if [[ ${port_android_version} == 17 ]];then
             grep -Eq '^[[:space:]]*start ioscheduler_switch$' "${a17_init_rc}" && { error "Failed to disable ioscheduler_switch"; exit 1; }
             green "ioscheduler_switch disabled -- vendor has no ioscheduler_switch.sh"
         fi
+    fi
+
+    # qspmhal: libupdateprof.qti.so waits forever (AServiceManager_waitForService)
+    # for an AIDL vendor.qti.qspmhal that legacy vendors never register; they
+    # only have the HIDL @1.0. system_server's display thread hangs at
+    # boot-complete, the Watchdog kills it and the UI soft-reboots every ~2 min.
+    # Switch the import to checkService so the library falls back to HIDL.
+    a17_vendor_aidl_qspm=$(grep -rhs -A2 'format="aidl"' build/portrom/images/vendor/etc/vintf build/portrom/images/odm/etc/vintf 2>/dev/null | grep -c "vendor.qti.qspmhal")
+    a17_updateprof="build/portrom/images/system_ext/lib64/libupdateprof.qti.so"
+    if [[ -f "${a17_updateprof}" && "${a17_vendor_aidl_qspm}" == "0" ]];then
+        python3 bin/patch_qspm_waitforservice.py "${a17_updateprof}" || { error "Failed to patch libupdateprof.qti.so"; exit 1; }
+        green "libupdateprof.qti.so falls back to the HIDL qspmhal -- no more watchdog soft reboots"
     fi
 fi
 
