@@ -1034,6 +1034,25 @@ if [[  ${port_android_version} -ge 15 ]]; then
             build/portrom/images/odm/lib/vendor.oplus.hardware.subsys-V1-ndk_platform.so \
             build/portrom/images/odm/lib64/vendor.oplus.hardware.subsys_radio-V1-ndk_platform.so \
             build/portrom/images/odm/lib64/vendor.oplus.hardware.subsys-V1-ndk_platform.so
+        # ColorOS 17's subsystem client (system_ext vendor-subsystem-service.jar)
+        # speaks the newer ISubsysRadio V1 / ISubsys V5 interfaces. Against the
+        # A15/A16 V4/V3 subsys_daemon above its calls land on the wrong methods:
+        # subsys_daemon segfaults in a different *Response() every time
+        # (enableATCIPortResponse, setImsRtpThresholdResponse,
+        # getDeviceLockStatusResponse) with a null callback, CommService is never
+        # available to qcrild, RADIO_POWER on never answers and the phone stays on
+        # "No services". Use the V1/V5 stack the 8T ColorOS 17 port ships.
+        if [[ ${port_android_version} -ge 17 && -f devices/common/ril_fix_A17_SM8350.zip ]];then
+            blue "Fixing RIL for Android 17 (subsys_radio V1 / subsys V5)"
+            unzip -o devices/common/ril_fix_A17_SM8350.zip -d ${work_dir}/build/portrom/images/
+            sed -i '/subsys_interface.subsys_radio<\/name>/{n;s|<version>4</version>|<version>1</version>|}' \
+                build/portrom/images/odm/etc/vintf/network_manifest_dsds.xml \
+                build/portrom/images/odm/etc/vintf/network_manifest_ssss.xml \
+                build/portrom/images/odm/etc/vintf/telephony_manifest_dsds.xml \
+                build/portrom/images/odm/etc/vintf/telephony_manifest_ssss.xml
+            sed -i '/subsys_interface.subsys<\/name>/{n;s|<version>3</version>|<version>5</version>|}' \
+                build/portrom/images/odm/etc/vintf/manifest/device_manifest_subsys.xml
+        fi
         blue "Fixing AOD"
     unzip -o devices/common/aod_fix_sm8350.zip -d ${work_dir}/build/portrom/images/
     fi
