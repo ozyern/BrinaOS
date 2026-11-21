@@ -22,4 +22,4 @@ __pycache__/
 *.pyc
 
 # Build logs
-build.log
+build*.log

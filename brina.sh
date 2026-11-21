@@ -713,6 +713,29 @@ if [[ "$PORT_ENABLE_32BIT_ZYGOTE" != "true" ]];then
     done
 fi
 
+# With only a 64-bit zygote, nothing may advertise 32-bit ABIs. A portrom that
+# ships 32-bit natively (e.g. CN COS17 PYB110) keeps abilist32 filled in, so
+# Build.SUPPORTED_32_BIT_ABIS is non-empty and system_server tries to tell the
+# missing zygote_secondary about boot_completed:
+#   RuntimeException: Failed to inform zygote of boot_completed
+#   ... attemptConnectionToSecondaryZygote ... No such file or directory
+# and the framework restarts forever. The 32-bit libraries stay on disk for
+# the vendor's 32-bit HALs; only the advertised app ABIs change.
+if [[ "$PORT_ENABLE_32BIT_ZYGOTE" != "true" ]];then
+    for prop_file in $(grep -rlE "^ro\.([a-z_]+\.)?product\.cpu\.abilist(32|64)?=" build/portrom/images/ --include="*.prop" 2>/dev/null);do
+        sed -i -E \
+            -e 's/^(ro\.([a-z_]+\.)?product\.cpu\.abilist)=.*/\1=arm64-v8a/' \
+            -e 's/^(ro\.([a-z_]+\.)?product\.cpu\.abilist32)=.*/\1=/' \
+            -e 's/^(ro\.([a-z_]+\.)?product\.cpu\.abilist64)=.*/\1=arm64-v8a/' \
+            ${prop_file}
+    done
+    if grep -rqsE "^ro\.([a-z_]+\.)?product\.cpu\.abilist32=.+" build/portrom/images/ --include="*.prop";then
+        error "A 32-bit ABI is still advertised with the 32-bit zygote off"
+        exit 1
+    fi
+    green "64-bit zygote only: 32-bit app ABIs no longer advertised"
+fi
+
 if [[ -f devices/${base_product_device}/config ]];then
    source devices/${base_product_device}/config
 fi
@@ -1653,6 +1676,10 @@ persist.sys.usb.config=adb
 EOF
 else
     blue "Release build: debug props left at stock values (Play Integrity safe)"
+    # adb on from first boot (still needs the on-screen authorization, since
+    # ro.adb.secure stays 1), so a hang at the logo can still be logcat'd.
+    sed -i "/^persist.sys.usb.config=/d" build/portrom/images/vendor/default.prop
+    echo "persist.sys.usb.config=mtp,adb" >> build/portrom/images/vendor/default.prop
 fi
 
 base_rom_density=$(grep "ro.sf.lcd_density" --include="*.prop" -r build/baserom/images/my_product | head -n 1 | cut -d "=" -f2)
@@ -2599,6 +2626,33 @@ if [[ ${port_android_version} == 17 ]];then
         fi
     else
         yellow "Missing RRO or framework resources; skipping Wi-Fi RRO fix"
+    fi
+
+    # init.rc: Android 17 calls into things a legacy vendor doesn't ship.
+    #  - init_dev_config runs ${ro.vendor.init_dev_config.path}; with the
+    #    property unset there is nothing to exec, so drop the exec_start and
+    #    the service.
+    #  - ioscheduler_switch runs /vendor/bin/ioscheduler_switch.sh, which old
+    #    vendors don't have.
+    # Each is only disabled when the vendor really lacks it.
+    a17_init_rc="build/portrom/images/system/system/etc/init/hw/init.rc"
+    if [[ -f "${a17_init_rc}" ]];then
+        if ! grep -rqs "^ro.vendor.init_dev_config.path=" build/portrom/images/vendor build/portrom/images/odm --include="*.prop";then
+            sed -i -E \
+                -e 's/^([[:space:]]*)exec_start init_dev_config$/\1# exec_start init_dev_config (no init_dev_config on legacy vendor)/' \
+                -e '/^service init_dev_config /,/^$/{/^$/!s/^/# /}' \
+                "${a17_init_rc}"
+            grep -Eq '^[[:space:]]*exec_start init_dev_config$' "${a17_init_rc}" && { error "Failed to disable init_dev_config"; exit 1; }
+            green "init_dev_config disabled -- the vendor never set its path"
+        fi
+        if [[ ! -f build/portrom/images/vendor/bin/ioscheduler_switch.sh ]];then
+            sed -i -E \
+                -e 's/^([[:space:]]*)start ioscheduler_switch$/\1# start ioscheduler_switch (script missing on legacy vendor)/' \
+                -e '/^service ioscheduler_switch /,/^$/{/^$/!s/^/# /}' \
+                "${a17_init_rc}"
+            grep -Eq '^[[:space:]]*start ioscheduler_switch$' "${a17_init_rc}" && { error "Failed to disable ioscheduler_switch"; exit 1; }
+            green "ioscheduler_switch disabled -- vendor has no ioscheduler_switch.sh"
+        fi
     fi
 fi
 
