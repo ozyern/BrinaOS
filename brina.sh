@@ -2179,9 +2179,23 @@ else
     base_oplus_camera_dir=$(find build/baserom/images/my_product -type d -name "OplusCamera")
     port_oplus_camera_dir=$(find build/portrom/images/my_product -type d -name "OplusCamera")
 
+    # ColorOS 17 CN ships the camera only as com.oplus.camera.app.apex. Its libs
+    # need libApsLoader.so / libAlgoProcess.so / libAlgoInterface.so from a COS17
+    # odm, so on our odm it dies with UnsatisfiedLinkError (libstdc++.so not in the
+    # com_oplus_camera_app namespace). Use the device's own OplusCamera instead,
+    # which matches the base odm camera libs.
+    port_camera_apex=$(find build/portrom/images/my_product build/portrom/images/system_ext build/portrom/images/product -path "*/apex/com.oplus.camera.app.*apex" 2>/dev/null)
+    if [[ -n "${port_camera_apex}" && -z "${port_oplus_camera_dir}" && -d "${base_oplus_camera_dir}" ]];then
+        rm -f ${port_camera_apex}
+        port_oplus_camera_dir=build/portrom/images/my_product/app/OplusCamera
+        mkdir -p "${port_oplus_camera_dir}"
+        green "Camera: dropped the COS17 camera APEX, using the base ROM's OplusCamera"
+    fi
+
     if [[ -d "${base_oplus_camera_dir}" ]] && [[ -d "${port_oplus_camera_dir}" ]];then
         rm -rf "$port_oplus_camera_dir"/* 
         cp -rf "$base_oplus_camera_dir"/* "$port_oplus_camera_dir"/
+        mkdir -p build/portrom/images/my_product/product_overlay/framework
         cp -rf build/baserom/images/my_product/product_overlay/framework/* build/portrom/images/my_product/product_overlay/framework/
     fi
  fi
@@ -2717,6 +2731,22 @@ if [[ -d build/portrom/images/my_product/apex && -f "${port_apexd}" ]] && ! grep
         fi
     done
 fi
+
+# The port only picks up overlays that sit directly in /my_*/overlay; ones in a
+# subfolder (/my_product/overlay/GmsConfigOverlayCommonCN/*.apk) are never
+# installed. That overlay is what lists Google WebView as a provider, so without
+# it "Current WebView package is null" and GMS / Google sign-in crash with
+# MissingWebViewPackageException. Flatten them to /my_*/overlay/<name>.apk.
+for my_overlay_apk in $(find build/portrom/images/my_*/overlay -mindepth 2 -maxdepth 2 -type f -name "*.apk" 2>/dev/null);do
+    my_overlay_root=$(dirname "$(dirname "${my_overlay_apk}")")
+    if [[ -e "${my_overlay_root}/$(basename "${my_overlay_apk}")" ]];then
+        yellow "Overlay $(basename "${my_overlay_apk}") already in ${my_overlay_root#build/portrom/images/}, leaving the subfolder copy"
+        continue
+    fi
+    mv -f "${my_overlay_apk}" "${my_overlay_root}/"
+    rmdir "$(dirname "${my_overlay_apk}")" 2>/dev/null || true
+    green "Overlay $(basename "${my_overlay_apk}") moved up to /${my_overlay_root#build/portrom/images/} so it gets installed"
+done
 
 if [[ -f devices/common/hdr_fix.zip ]] && [[ $base_android_version -le 14 ]];then
     unzip -o devices/common/hdr_fix.zip -d build/portrom/images/
