@@ -576,8 +576,16 @@ PORT_SELINUX_PERMISSIVE=${PORT_SELINUX_PERMISSIVE:-true}
 # 32-bit runtime so the vendor's request can actually be served.
 if [[ "$PORT_ENABLE_32BIT" == "true" && ! -f build/portrom/images/system/system/bin/app_process32 && -n "$vendor_cpu_abilist32" ]]; then
     blue "64bit only portrom detected"
-    if [[ -f devices/common/32bit-compatibility.zip ]];then
-        unzip -o devices/common/32bit-compatibility.zip -d build/portrom/images/ > /dev/null || error "Failed to extract 32bit-compatibility.zip"
+    # The zip ships system/apex (runtime, ART, i18n, ...) and system/lib from a
+    # donor ROM of ONE Android version, so it must match the portrom's version.
+    # Putting the A16 runtime APEX on an A17 system hangs at the splash logo:
+    # its linkerconfig wants fmt::v11 but A17 libbase exports fmt::v12, so no
+    # ld.config is generated and logd/vold/keystore2 exit 1 forever.
+    # 32bit-compatibility-a16.zip = OnePlus Open A16. A17 needs its own zip.
+    compat32_zip="devices/common/32bit-compatibility-a${port_android_version%%.*}.zip"
+    if [[ -f ${compat32_zip} ]];then
+        blue "Using ${compat32_zip} for Android ${port_android_version}"
+        unzip -o ${compat32_zip} -d build/portrom/images/ > /dev/null || error "Failed to extract ${compat32_zip}"
         # the zip ships the compressed ART apex; leaving an uncompressed one
         # beside it gives apexd two copies of the same module
         rm -f build/portrom/images/system/system/apex/com.google.android.art.apex
@@ -625,7 +633,7 @@ if [[ "$PORT_ENABLE_32BIT" == "true" && ! -f build/portrom/images/system/system/
         fi
         green "Injected 32-bit runtime into portrom"
     else
-        yellow "devices/common/32bit-compatibility.zip not found, skipping 32-bit injection"
+        yellow "${compat32_zip} not found (no 32-bit runtime for Android ${port_android_version}), skipping 32-bit injection"
     fi
 fi
 

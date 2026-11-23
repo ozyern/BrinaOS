@@ -12,7 +12,7 @@ devices/*/vendor_boot.img
 /*.zip
 
 # Too big for GitHub, so soz. (166 MB > the 100 MB hard limit)
-devices/common/32bit-compatibility.zip
+devices/common/32bit-compatibility-a*.zip
 
 # Windows "mark of the web" turds from copying files over WSL
 *:Zone.Identifier
