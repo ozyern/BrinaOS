@@ -2261,14 +2261,9 @@ find build/portrom/images/config -type f -name "*file_contexts" \
         -exec perl -i -ne 'print if /^[\x00-\x7F]+$/' {} \;
 #find build/portrom/images/config -type f -name "*file_contexts" -exec sed -i -E '/[\x{4e00}-\x{9fa5}]/d' {} \;
 
-# bootanimation
-if [[ $baseIsOOS == "true" && $portIsOOS == "true" ]]; then
-    rm -rf build/portrom/images/my_product/media/bootanimation
-    cp -rf build/baserom/images/my_product/media/bootanimation build/portrom/images/my_product/media/
-elif [[ $baseIsColorOSCN == "true" && ( $portIsColorOSGlobal == "true" || $portIsColorOS == "true" ) ]]; then
-    rm -rf build/portrom/images/my_product/media/bootanimation
-    cp -rf build/baserom/images/my_product/media/bootanimation build/portrom/images/my_product/media/
-fi
+# bootanimation: always keep the portrom's own (never the baserom's - on an
+# OOS baserom that put the OxygenOS animation on a ColorOS 17 port). Only
+# brina_mode replaces it, below.
 
 # BrinaOS boot animation. Replaces every copy in the tree rather than just the
 # top one: the carrier subdirectories carry their own, so an ATT_MX or Telcel SIM
