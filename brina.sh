@@ -363,6 +363,20 @@ elif [[ -n ${version_name} ]];then
     app_patch_folder=${version_name}
 fi
 
+# build/<rom>/patched/ caches APKs/jars by file name only. A cached copy made by
+# an older brina.sh silently skips every later patching fix (an EEA build reused
+# a pre-apk_swap_dex SystemUI.apk -> SystemUI crash loop, no status bar,
+# lockscreen or gestures). Drop the cache whenever the patching code changes.
+if [[ -n ${app_patch_folder} ]];then
+    patch_stamp=$(cat brina.sh caffeine.sh bin/*.py 2>/dev/null | sha256sum | cut -d' ' -f1)
+    if [[ -d build/${app_patch_folder}/patched && "$(cat build/${app_patch_folder}/patched/.brina_stamp 2>/dev/null)" != "${patch_stamp}" ]];then
+        yellow "Patch scripts changed since build/${app_patch_folder}/patched was made, discarding cached APKs"
+        rm -rf build/${app_patch_folder}/patched
+    fi
+    mkdir -p build/${app_patch_folder}/patched
+    echo "${patch_stamp}" > build/${app_patch_folder}/patched/.brina_stamp
+fi
+
 for part in system product system_ext my_product my_manifest;do
     extract_partition build/baserom/images/${part}.img build/baserom/images    
 done
