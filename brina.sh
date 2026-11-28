@@ -2768,6 +2768,18 @@ if [[ ${port_android_version} == 17 ]];then
     # nullptr for codec information" -> "Failed to create audio encoder".
     # Every OMX.google codec there has a c2.android equivalent carrying it as
     # an alias, so drop those includes.
+    # traced (perfetto) on Android 17 opens an AF_VSOCK socket; the 5.4 kernel
+    # has no vsock ("Failed to create vsock://-1:2010 (errno: 97)"), so traced
+    # dies and init restarts it every 5 s forever (constant background churn,
+    # adds to UI lag). Keep it off by default; perfetto.rc only starts traced
+    # on persist.traced.enable=1.
+    a17_sys_prop="build/portrom/images/system/system/build.prop"
+    if [[ -f "${a17_sys_prop}" ]];then
+        sed -i '/^persist.traced.enable=/d' "${a17_sys_prop}"
+        echo "persist.traced.enable=0" >> "${a17_sys_prop}"
+        green "traced disabled (no vsock in the 5.4 kernel -> 5 s crash loop)"
+    fi
+
     a17_codecs_xml="build/portrom/images/vendor/etc/media_codecs.xml"
     if [[ -f "${a17_codecs_xml}" ]] && ! find build/portrom/images/system/system/lib64 -name 'libstagefright_soft_aacenc.so' 2>/dev/null | grep -q .;then
         if grep -qE 'Include href="media_codecs_(google_audio|google_telephony|vendor_audio)\.xml"' "${a17_codecs_xml}";then
