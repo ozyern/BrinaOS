@@ -23,3 +23,7 @@ __pycache__/
 
 # Build logs
 build*.log
+
+# proprietary module payloads kept next to their script.sh
+devices/*/module_files/*/files.zip
+devices/*/module_files/*/files/
