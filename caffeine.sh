@@ -1056,15 +1056,28 @@ add_module() {
     fi
     unset module_local_dir
 
-    mkdir -p cache/${module_name}
+    # Download into a scratch dir and only replace the cache on success. A failed
+    # download used to rm -rf the cache and skip the module, so a GitHub hiccup or
+    # a module dropped upstream silently cost a build its fix even though a good
+    # copy from an earlier build was sitting in cache/ (an EEA build lost
+    # Camera-5.0-fixes-ODM this way -> no Master mode, odm camera config stock).
+    local module_dl="cache/.${module_name}.dl"
+    rm -rf "${module_dl}"; mkdir -p "${module_dl}"
     # -f: on a 404 curl must fail instead of saving GitHub's HTML error page,
     # which would otherwise be unzipped and then *sourced* as script.sh.
-    if ! curl -fL ${module_repo}/raw/refs/heads/${module_repo_branch}/${module_name}/files.zip -o cache/${module_name}/files.zip \
-        || ! curl -fL ${module_repo}/raw/refs/heads/${module_repo_branch}/${module_name}/script.sh -o cache/${module_name}/script.sh; then
-        yellow "Module ${module_name} not available at ${module_repo} (${module_repo_branch}) -- skipping"
+    if curl -fL ${module_repo}/raw/refs/heads/${module_repo_branch}/${module_name}/files.zip -o "${module_dl}/files.zip" \
+        && curl -fL ${module_repo}/raw/refs/heads/${module_repo_branch}/${module_name}/script.sh -o "${module_dl}/script.sh"; then
         rm -rf cache/${module_name}
+        mv "${module_dl}" cache/${module_name}
+    elif [[ -f cache/${module_name}/files.zip && -f cache/${module_name}/script.sh ]]; then
+        yellow "Module ${module_name} not downloadable from ${module_repo} (${module_repo_branch}) -- using the cached copy"
+    else
+        yellow "Module ${module_name} not available at ${module_repo} (${module_repo_branch}) and not cached -- skipping"
+        rm -rf "${module_dl}"
         return 0
     fi
+    rm -rf "${module_dl}"
+    mkdir -p cache/${module_name}
     module_files=cache/${module_name}/files
     unzip -o cache/${module_name}/files.zip -d ${module_files}
     source cache/${module_name}/script.sh
