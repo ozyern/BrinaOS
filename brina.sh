@@ -2739,6 +2739,43 @@ if [[ ${port_android_version} == 17 ]];then
         green "HIDL-only boot HAL: boots are marked successful by bootctl_hidl"
     fi
 
+    # Camera APS (black preview): libAPSClient-jni's loadAPSLib() only takes the
+    # working "java reflect" path when BOTH /system_ext/lib/ and /system_ext/lib64/
+    # libHeifWinBufExchg-jni.so exist (it access()es the 32-bit one first).
+    # Otherwise it dlopens libHeifEncoderWrapper.so/libNativeWinBuffExchange.so
+    # from the camera's isolated /product namespace, which can't load their
+    # private deps (libstagefright, libui), APS never starts and the preview
+    # stays black. 64-bit-only portroms (OnePlus 15 EEA) have no lib/ copy:
+    # add the 32-bit one (from CN ColorOS 17; only its existence is checked).
+    a17_heif64="build/portrom/images/system_ext/lib64/libHeifWinBufExchg-jni.so"
+    a17_heif32="build/portrom/images/system_ext/lib/libHeifWinBufExchg-jni.so"
+    if [[ -f "${a17_heif64}" && ! -f "${a17_heif32}" ]];then
+        mkdir -p build/portrom/images/system_ext/lib
+        cp -f devices/common/a17_camera/libHeifWinBufExchg-jni.so "${a17_heif32}"
+        a17_fc="build/portrom/images/config/system_ext_file_contexts"
+        a17_fs="build/portrom/images/config/system_ext_fs_config"
+        grep -q '^/system_ext/lib ' ${a17_fc} || echo '/system_ext/lib u:object_r:system_lib_file:s0' >> ${a17_fc}
+        grep -q '^/system_ext/lib/libHeifWinBufExchg-jni\\.so ' ${a17_fc} || echo '/system_ext/lib/libHeifWinBufExchg-jni\.so u:object_r:system_lib_file:s0' >> ${a17_fc}
+        grep -q '^system_ext/lib ' ${a17_fs} || echo 'system_ext/lib 0 0 0755' >> ${a17_fs}
+        grep -q '^system_ext/lib/libHeifWinBufExchg-jni.so ' ${a17_fs} || echo 'system_ext/lib/libHeifWinBufExchg-jni.so 0 0 0644' >> ${a17_fs}
+        green "Camera APS: added 32-bit libHeifWinBufExchg-jni.so (fixes black preview)"
+    fi
+
+    # Video recording ("hold longer for video", nothing recorded): the legacy
+    # vendor's media_codecs.xml includes the OMX.google software codec lists
+    # before the Codec2 ones, so MediaRecorder picks OMX.google.aac.encoder.
+    # Android 17 no longer ships the OMX software codecs -> "ACodec: Unexpected
+    # nullptr for codec information" -> "Failed to create audio encoder".
+    # Every OMX.google codec there has a c2.android equivalent carrying it as
+    # an alias, so drop those includes.
+    a17_codecs_xml="build/portrom/images/vendor/etc/media_codecs.xml"
+    if [[ -f "${a17_codecs_xml}" ]] && ! find build/portrom/images/system/system/lib64 -name 'libstagefright_soft_aacenc.so' 2>/dev/null | grep -q .;then
+        if grep -qE 'Include href="media_codecs_(google_audio|google_telephony|vendor_audio)\.xml"' "${a17_codecs_xml}";then
+            sed -i -E '/Include href="media_codecs_(google_audio|google_telephony|vendor_audio)\.xml"/d' "${a17_codecs_xml}"
+            green "media_codecs.xml: dropped OMX.google software codec lists (fixes video recording)"
+        fi
+    fi
+
     # qspmhal: libupdateprof.qti.so waits forever (AServiceManager_waitForService)
     # for an AIDL vendor.qti.qspmhal that legacy vendors never register; they
     # only have the HIDL @1.0. system_server's display thread hangs at
