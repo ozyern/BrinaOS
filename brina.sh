@@ -1483,6 +1483,9 @@ elif [[ -f "$targetSystemUI" ]]; then
     # take only the patched dex.
     python3 bin/apk_swap_dex.py tmp/$(basename $targetSystemUI).bak tmp/SystemUI.apkeditor.apk tmp/SystemUI.unaligned.apk
     otatools/bin/zipalign -f -p 4 tmp/SystemUI.unaligned.apk build/${app_patch_folder}/patched/SystemUI.apk
+    # the dex swap drops the stock v3 signing block -> unsigned APK, which PM
+    # refuses to install (no SystemUI at all). Put the stock block back.
+    python3 bin/apk_copy_sigblock.py tmp/$(basename $targetSystemUI).bak build/${app_patch_folder}/patched/SystemUI.apk || error "Failed to restore SystemUI signing block"
     rm -f tmp/SystemUI.apkeditor.apk tmp/SystemUI.unaligned.apk
     cp -rfv build/${app_patch_folder}/patched/SystemUI.apk $targetSystemUI
 fi
@@ -2715,6 +2718,25 @@ if [[ ${port_android_version} == 17 ]];then
             grep -Eq '^[[:space:]]*start ioscheduler_switch$' "${a17_init_rc}" && { error "Failed to disable ioscheduler_switch"; exit 1; }
             green "ioscheduler_switch disabled -- vendor has no ioscheduler_switch.sh"
         fi
+    fi
+
+    # Boot control: A17 vold refuses HIDL IBootControl <= 1.1 ("not marking slot
+    # as successful"), so on a vendor without the AIDL HAL every boot eats one
+    # of the 7 retries and the phone drops to the bootloader with the slot
+    # marked unbootable. Mark the boot successful with a HIDL bootctl instead.
+    # The rc runs it without a domain transition, which init only allows while
+    # SELinux is permissive (PORT_SELINUX_PERMISSIVE, the default).
+    if ! grep -rhs -A2 'format="aidl"' build/portrom/images/vendor/etc/vintf build/portrom/images/odm/etc/vintf 2>/dev/null | grep -q "android.hardware.boot";then
+        cp -f devices/common/a17_bootctl/bootctl_hidl build/portrom/images/system/system/bin/bootctl_hidl
+        chmod 755 build/portrom/images/system/system/bin/bootctl_hidl
+        cp -f devices/common/a17_bootctl/brina_mark_boot.rc build/portrom/images/system/system/etc/init/brina_mark_boot.rc
+        a17_fc="build/portrom/images/config/system_file_contexts"
+        a17_fs="build/portrom/images/config/system_fs_config"
+        grep -q '^/system/system/bin/bootctl_hidl ' ${a17_fc} || echo '/system/system/bin/bootctl_hidl u:object_r:system_file:s0' >> ${a17_fc}
+        grep -q '^/system/system/etc/init/brina_mark_boot\\.rc ' ${a17_fc} || echo '/system/system/etc/init/brina_mark_boot\.rc u:object_r:system_file:s0' >> ${a17_fc}
+        grep -q '^system/system/bin/bootctl_hidl ' ${a17_fs} || echo 'system/system/bin/bootctl_hidl 0 2000 0755' >> ${a17_fs}
+        grep -q '^system/system/etc/init/brina_mark_boot.rc ' ${a17_fs} || echo 'system/system/etc/init/brina_mark_boot.rc 0 0 0644' >> ${a17_fs}
+        green "HIDL-only boot HAL: boots are marked successful by bootctl_hidl"
     fi
 
     # qspmhal: libupdateprof.qti.so waits forever (AServiceManager_waitForService)

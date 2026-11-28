@@ -1,0 +1,7 @@
+# Android 17 vold only talks to the AIDL IBootControl; legacy vendors (9 Pro:
+# android.hardware.boot@1.1 HIDL) are refused ("IBootControl HIDL versions 1.1
+# and earlier are no longer supported"), so no boot is ever marked successful
+# and the bootloader marks the slot unbootable after 7 boots.
+# bootctl_hidl (KernelSU's HIDL bootctl) marks it once the boot completed.
+on property:sys.boot_completed=1
+    exec_background - root root -- /system/bin/bootctl_hidl mark-boot-successful
