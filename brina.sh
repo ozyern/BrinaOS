@@ -2780,6 +2780,18 @@ if [[ ${port_android_version} == 17 ]];then
         green "traced disabled (no vsock in the 5.4 kernel -> 5 s crash loop)"
     fi
 
+    # Video recording: with qcom.hw.aac.encoder / vendor.audio.hw.aac.encoder
+    # true, OPlus's StagefrightRecorder creates OMX.qcom.audio.encoder.aac by
+    # name. No media_codecs xml declares it, and Android 17's ACodec refuses a
+    # codec without list info ("Unexpected nullptr for codec information" ->
+    # "Failed to create audio encoder"), so every recording fails. With both
+    # false it uses the listed Codec2 AAC encoder.
+    for a17_aac_prop in build/portrom/images/vendor/build.prop build/portrom/images/system/system/build.prop;do
+        [[ -f "${a17_aac_prop}" ]] || continue
+        sed -i -E 's/^(qcom\.hw\.aac\.encoder|vendor\.audio\.hw\.aac\.encoder)=.*/\1=false/' "${a17_aac_prop}"
+    done
+    green "HW AAC encoder props off (fixes video recording)"
+
     a17_codecs_xml="build/portrom/images/vendor/etc/media_codecs.xml"
     if [[ -f "${a17_codecs_xml}" ]] && ! find build/portrom/images/system/system/lib64 -name 'libstagefright_soft_aacenc.so' 2>/dev/null | grep -q .;then
         if grep -qE 'Include href="media_codecs_(google_audio|google_telephony|vendor_audio)\.xml"' "${a17_codecs_xml}";then
